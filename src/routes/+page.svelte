@@ -9,7 +9,8 @@
 	import * as Command from '$lib/components/ui/command/index.js';
 	import * as Item from '$lib/components/ui/item/index.js';
 	import { PHILOSOPHY_QUOTES } from '$lib/quotes';
-	import autoAnimate from '@formkit/auto-animate';
+	import { fly } from 'svelte/transition';
+	import { cubicInOut } from 'svelte/easing';
 	import type { Article, SearchResult, JourneyState } from '$lib/types';
 	import {
 		MAX_STEPS,
@@ -26,6 +27,7 @@
 		findNextStep
 	} from '$lib/wikipedia-client';
 	import { base } from '$app/paths';
+	import * as Popover from '$lib/components/ui/popover/index.js';
 
 	// State
 	let journeyState = $state<JourneyState>({
@@ -44,9 +46,8 @@
 	let isLoadingInitial = $state(false);
 
 	// Derived states
-	let cycleIndexes = $derived(() => {
+	let cycleIndexes = $derived.by(() => {
 		if (journeyState.outcome !== 'cycle' || journeyState.path.length === 0) return [];
-
 		const lastTitle = journeyState.path[journeyState.path.length - 1].title.toLowerCase();
 		const firstIndex = journeyState.path.findIndex((a) => a.title.toLowerCase() === lastTitle);
 		return [firstIndex, journeyState.path.length - 1];
@@ -78,17 +79,27 @@
 
 	let isJourneyActive = $derived(journeyState.status === 'RUNNING' || isLoadingInitial);
 
-	// Helper to get first sentence
+	// Memoization cache for avatar URLs and sentences
+	const avatarCache = new Map<string, string>();
+	const sentenceCache = new Map<string, string>();
+
+	// Helper to get first sentence with caching
 	function getFirstSentence(text: string): string {
 		if (!text) return '';
+		if (sentenceCache.has(text)) return sentenceCache.get(text)!;
 		const match = text.match(/^[^.!?]+[.!?]/);
-		return match ? match[0] : text.slice(0, 100) + '...';
+		const result = match ? match[0] : text.slice(0, 100) + '...';
+		sentenceCache.set(text, result);
+		return result;
 	}
 
-	// Generate DiceBear shapes avatar
+	// Generate DiceBear shapes avatar with caching
 	function getAvatarUrl(title: string): string {
+		if (avatarCache.has(title)) return avatarCache.get(title)!;
 		const seed = encodeURIComponent(title);
-		return `https://api.dicebear.com/9.x/shapes/svg?seed=${seed}&backgroundColor=transparent`;
+		const url = `https://api.dicebear.com/9.x/shapes/svg?seed=${seed}&backgroundColor=transparent`;
+		avatarCache.set(title, url);
+		return url;
 	}
 
 	// Search functionality
@@ -122,28 +133,30 @@
 		}
 	});
 
-	// Auto-scroll to bottom when path changes (after item is added)
+	// Combined scroll effect for both running and finished states
+	$effect(() => {
+		if (!pathContainer) return;
+		if (journeyState.status !== 'RUNNING' && journeyState.status !== 'FINISHED') return;
+
+		const delay = journeyState.status === 'FINISHED' ? FINISH_SCROLL_DELAY : SCROLL_DELAY;
+
+		setTimeout(() => {
+			if (pathContainer) {
+				const scrollTarget = pathContainer.offsetTop + pathContainer.scrollHeight;
+				window.scrollTo({ top: scrollTarget, behavior: 'smooth' });
+			}
+		}, delay);
+	});
+
+	// Watch for path changes to scroll
 	$effect(() => {
 		if (journeyState.status === 'RUNNING' && pathContainer && journeyState.path.length > 0) {
-			// Wait for AutoAnimate to complete the item addition
 			setTimeout(() => {
 				if (pathContainer && journeyState.status === 'RUNNING') {
 					const scrollTarget = pathContainer.offsetTop + pathContainer.scrollHeight;
 					window.scrollTo({ top: scrollTarget, behavior: 'smooth' });
 				}
 			}, SCROLL_DELAY);
-		}
-	});
-
-	// Scroll to bottom once when journey finishes
-	$effect(() => {
-		if (journeyState.status === 'FINISHED' && pathContainer) {
-			setTimeout(() => {
-				if (pathContainer) {
-					const scrollTarget = pathContainer.offsetTop + pathContainer.scrollHeight;
-					window.scrollTo({ top: scrollTarget, behavior: 'smooth' });
-				}
-			}, FINISH_SCROLL_DELAY);
 		}
 	});
 
@@ -257,7 +270,7 @@
 						return;
 					}
 
-					// Add to path
+					// Add to path - use direct mutation instead of spreading
 					const nextArticle: Article = {
 						title: stepData.nextPreview.title,
 						extract: stepData.nextPreview.extract ?? '',
@@ -265,10 +278,8 @@
 						url: `https://en.wikipedia.org${stepData.nextLink}`
 					};
 
-					journeyState = {
-						...journeyState,
-						path: [...journeyState.path, nextArticle]
-					};
+					journeyState.path.push(nextArticle);
+					journeyState.status = 'RUNNING';
 					currentTitle = stepData.nextPreview.title;
 				} catch (err) {
 					if (!abortController.signal.aborted) {
@@ -326,7 +337,7 @@
 </script>
 
 <!-- Header -->
-<header class="w-full border-b">
+<header class="sticky top-0 z-50 w-full border-b bg-background">
 	<div class="flex items-center justify-between px-4 py-2">
 		{#if mode.current === 'light'}
 			<img src="{base}/logo_black.svg" alt="Wikisophy Logo" class="h-12 w-12" />
@@ -334,15 +345,74 @@
 			<img src="{base}/logo_white.svg" alt="Wikisophy Logo" class="h-12 w-12" />
 		{/if}
 
-		<Button onclick={toggleMode} variant="outline" size="icon">
-			<SunIcon
-				class="h-[1.2rem] w-[1.2rem] scale-100 rotate-0 !transition-all dark:scale-0 dark:-rotate-90"
-			/>
-			<MoonIcon
-				class="absolute h-[1.2rem] w-[1.2rem] scale-0 rotate-90 !transition-all dark:scale-100 dark:rotate-0"
-			/>
-			<span class="sr-only">Toggle theme</span>
-		</Button>
+		<div class="flex items-center gap-2">
+			<Popover.Root>
+				<Popover.Trigger>
+					<Button variant="outline" size="icon" aria-label="About Wikisophy">
+						<!-- simple info glyph -->
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							class="h-4 w-4"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke="currentColor"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z"
+							/>
+						</svg>
+					</Button>
+				</Popover.Trigger>
+				<Popover.Content side="top" align="end" sideOffset={4} class="z-50 w-64 p-3 text-sm">
+					<p>
+						Wikisophy is an interactive demonstration of the Wikipedia "Getting to Philosophy"
+						phenomenon. This project is licensed under the
+						<a
+							href="https://github.com/mdonmez/Wikisophy/blob/main/LICENSE"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="underline">MIT License</a
+						>
+						and source code is
+						<a
+							href="https://github.com/mdonmez/Wikisophy"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="underline">available</a
+						>.
+					</p>
+				</Popover.Content>
+			</Popover.Root>
+
+			<Button onclick={toggleMode} variant="outline" size="icon">
+				<SunIcon
+					class="h-[1.2rem] w-[1.2rem] scale-100 rotate-0 !transition-all dark:scale-0 dark:-rotate-90"
+				/>
+				<MoonIcon
+					class="absolute h-[1.2rem] w-[1.2rem] scale-0 rotate-90 !transition-all dark:scale-100 dark:rotate-0"
+				/>
+				<span class="sr-only">Toggle theme</span>
+			</Button>
+
+			{#if isJourneyActive}
+				<div
+					in:fly={{ x: 50, duration: 250, easing: cubicInOut }}
+					out:fly={{ x: 50, duration: 250, easing: cubicInOut }}
+				>
+					<Button
+						variant="destructive"
+						size="icon"
+						aria-label="Cancel journey"
+						onclick={cancelJourney}
+					>
+						<XIcon />
+					</Button>
+				</div>
+			{/if}
+		</div>
 	</div>
 </header>
 
@@ -361,7 +431,7 @@
 		</div>
 
 		<!-- Search Bar -->
-		<div class="mx-auto mt-8 flex max-w-3xl items-start gap-3" use:autoAnimate>
+		<div class="mx-auto mt-8 flex max-w-3xl items-start gap-3">
 			<Button
 				variant="outline"
 				size="icon"
@@ -404,26 +474,14 @@
 					</Command.List>
 				{/if}
 			</Command.Root>
-
-			{#if isJourneyActive}
-				<Button
-					variant="destructive"
-					size="icon"
-					aria-label="Cancel journey"
-					class="h-[38px] w-[38px] shrink-0"
-					onclick={cancelJourney}
-				>
-					<XIcon />
-				</Button>
-			{/if}
 		</div>
 
 		<!-- Path Section -->
 		{#if journeyState.path.length > 0 || journeyState.status === 'RUNNING' || isLoadingInitial}
 			<div class="mx-auto mt-12 max-w-3xl" bind:this={pathContainer}>
-				<div class="flex flex-col gap-4" use:autoAnimate>
+				<div class="flex flex-col gap-4">
 					{#each journeyState.path as article, index (article.title + index)}
-						{@const isCycleItem = cycleIndexes().includes(index)}
+						{@const isCycleItem = cycleIndexes.includes(index)}
 						<Item.Root
 							variant="outline"
 							class={`transition-shadow hover:shadow-md ${isCycleItem ? 'animate-pulse border-red-500' : ''}`}
@@ -483,7 +541,7 @@
 		{/if}
 
 		<!-- Outcome Message and Actions -->
-		<div use:autoAnimate>
+		<div>
 			{#if journeyState.status === 'FINISHED' && journeyState.outcome}
 				<div class="mx-auto mt-12 max-w-3xl text-center">
 					<div class="mb-6 text-lg font-semibold">
