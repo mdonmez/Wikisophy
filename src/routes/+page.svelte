@@ -25,6 +25,7 @@
 		fetchRandomArticle,
 		findNextStep
 	} from '$lib/wikipedia-client';
+	import { base } from '$app/paths';
 
 	// State
 	let journeyState = $state<JourneyState>({
@@ -328,9 +329,9 @@
 <header class="w-full border-b">
 	<div class="flex items-center justify-between px-4 py-2">
 		{#if mode.current === 'light'}
-			<img src="/logo_black.svg" alt="Wikisophy Logo" class="h-12 w-12" />
+			<img src="{base}/logo_black.svg" alt="Wikisophy Logo" class="h-12 w-12" />
 		{:else}
-			<img src="/logo_white.svg" alt="Wikisophy Logo" class="h-12 w-12" />
+			<img src="{base}/logo_white.svg" alt="Wikisophy Logo" class="h-12 w-12" />
 		{/if}
 
 		<Button onclick={toggleMode} variant="outline" size="icon">
