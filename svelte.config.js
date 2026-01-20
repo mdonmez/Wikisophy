@@ -13,7 +13,11 @@ const config = {
 			// Enable fallback for SPA routing
 			fallback: 'index.html',
 			strict: false
-		})
+		}),
+		// Set base path for GitHub Pages subdirectory deployment
+		paths: {
+			base: '/Wikisophy'
+		}
 	}
 };
 
