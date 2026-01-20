@@ -19,6 +19,12 @@
 		SCROLL_DELAY,
 		FINISH_SCROLL_DELAY
 	} from '$lib/constants';
+	import {
+		searchArticles,
+		fetchPreview,
+		fetchRandomArticle,
+		findNextStep
+	} from '$lib/wikipedia-client';
 
 	// State
 	let journeyState = $state<JourneyState>({
@@ -93,12 +99,8 @@
 
 		isSearching = true;
 		try {
-			const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=${SEARCH_LIMIT}`);
-			if (!res.ok) {
-				throw new Error('Search failed');
-			}
-			const data = await res.json();
-			searchResults = data.results ?? [];
+			const results = await searchArticles(query, SEARCH_LIMIT);
+			searchResults = results;
 		} catch (err) {
 			console.error('Search error:', err);
 			searchResults = [];
@@ -155,13 +157,11 @@
 		isLoadingInitial = true;
 
 		try {
-			const res = await fetch('/api/random');
-			if (!res.ok) {
+			const title = await fetchRandomArticle();
+			if (title) {
+				await startJourney(title);
+			} else {
 				throw new Error('Failed to fetch random article');
-			}
-			const data = await res.json();
-			if (data.title) {
-				await startJourney(data.title);
 			}
 		} catch (err) {
 			console.error('Random article failed:', err);
@@ -183,21 +183,17 @@
 
 		// Fetch initial article preview
 		try {
-			const previewRes = await fetch(`/api/preview?title=${encodeURIComponent(initialTitle)}`, {
-				signal: abortController.signal
-			});
+			const previewData = await fetchPreview(initialTitle);
 
-			if (!previewRes.ok) {
+			if (!previewData) {
 				throw new Error('Failed to fetch initial article');
 			}
-
-			const previewData = await previewRes.json();
 
 			const firstArticle: Article = {
 				title: previewData.title,
 				extract: previewData.extract ?? '',
 				thumbnail: previewData.thumbnail ?? null,
-				url: `/wiki/${encodeURIComponent(previewData.title)}`
+				url: `https://en.wikipedia.org/wiki/${encodeURIComponent(previewData.title)}`
 			};
 
 			journeyState = {
@@ -248,18 +244,7 @@
 
 				// Fetch next step
 				try {
-					const stepRes = await fetch('/api/step', {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ title: currentTitle }),
-						signal: abortController.signal
-					});
-
-					if (!stepRes.ok) {
-						throw new Error('Step request failed');
-					}
-
-					const stepData = await stepRes.json();
+					const stepData = await findNextStep(currentTitle);
 
 					// Check dead end
 					if (!stepData.nextLink || !stepData.nextPreview) {
@@ -276,7 +261,7 @@
 						title: stepData.nextPreview.title,
 						extract: stepData.nextPreview.extract ?? '',
 						thumbnail: stepData.nextPreview.thumbnail ?? null,
-						url: stepData.nextLink
+						url: `https://en.wikipedia.org${stepData.nextLink}`
 					};
 
 					journeyState = {
@@ -443,12 +428,7 @@
 							class={`transition-shadow hover:shadow-md ${isCycleItem ? 'animate-pulse border-red-500' : ''}`}
 						>
 							{#snippet child({ props })}
-								<a
-									href={`https://en.wikipedia.org${article.url}`}
-									target="_blank"
-									rel="noopener noreferrer"
-									{...props}
-								>
+								<a href={article.url} target="_blank" rel="noopener noreferrer" {...props}>
 									<div class="flex items-center gap-3">
 										<Badge class="h-5 w-7 rounded-sm px-1 font-mono tabular-nums">
 											{index + 1}
