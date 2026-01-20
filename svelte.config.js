@@ -13,8 +13,11 @@ const config = {
 			// Enable fallback for SPA routing
 			fallback: 'index.html',
 			strict: false
-		})
-		// No base path needed for user site (mdonmez.github.io)
+		}),
+		// Set base path for GitHub Pages subdirectory deployment
+		paths: {
+			base: '/Wikisophy'
+		}
 	}
 };
 
