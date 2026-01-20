@@ -12,12 +12,6 @@
 	import autoAnimate from '@formkit/auto-animate';
 	import type { Article, SearchResult, JourneyState } from '$lib/types';
 	import {
-		fetchArticlePreview,
-		fetchRandomArticle,
-		searchArticles,
-		performStep
-	} from '$lib/wikipedia';
-	import {
 		MAX_STEPS,
 		SEARCH_DEBOUNCE,
 		SEARCH_LIMIT,
@@ -99,7 +93,12 @@
 
 		isSearching = true;
 		try {
-			searchResults = await searchArticles(query, SEARCH_LIMIT);
+			const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=${SEARCH_LIMIT}`);
+			if (!res.ok) {
+				throw new Error('Search failed');
+			}
+			const data = await res.json();
+			searchResults = data.results ?? [];
 		} catch (err) {
 			console.error('Search error:', err);
 			searchResults = [];
@@ -156,9 +155,13 @@
 		isLoadingInitial = true;
 
 		try {
-			const title = await fetchRandomArticle();
-			if (title) {
-				await startJourney(title);
+			const res = await fetch('/api/random');
+			if (!res.ok) {
+				throw new Error('Failed to fetch random article');
+			}
+			const data = await res.json();
+			if (data.title) {
+				await startJourney(data.title);
 			}
 		} catch (err) {
 			console.error('Random article failed:', err);
@@ -180,11 +183,15 @@
 
 		// Fetch initial article preview
 		try {
-			const previewData = await fetchArticlePreview(initialTitle);
+			const previewRes = await fetch(`/api/preview?title=${encodeURIComponent(initialTitle)}`, {
+				signal: abortController.signal
+			});
 
-			if (!previewData) {
+			if (!previewRes.ok) {
 				throw new Error('Failed to fetch initial article');
 			}
+
+			const previewData = await previewRes.json();
 
 			const firstArticle: Article = {
 				title: previewData.title,
@@ -241,7 +248,18 @@
 
 				// Fetch next step
 				try {
-					const stepData = await performStep(currentTitle);
+					const stepRes = await fetch('/api/step', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ title: currentTitle }),
+						signal: abortController.signal
+					});
+
+					if (!stepRes.ok) {
+						throw new Error('Step request failed');
+					}
+
+					const stepData = await stepRes.json();
 
 					// Check dead end
 					if (!stepData.nextLink || !stepData.nextPreview) {
