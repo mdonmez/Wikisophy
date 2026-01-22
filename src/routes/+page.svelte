@@ -4,6 +4,7 @@
 	import MoonIcon from '@lucide/svelte/icons/moon';
 	import DicesIcon from '@lucide/svelte/icons/dices';
 	import XIcon from '@lucide/svelte/icons/x';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import { Button, buttonVariants } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Command from '$lib/components/ui/command/index.js';
@@ -17,8 +18,7 @@
 		SEARCH_DEBOUNCE,
 		SEARCH_LIMIT,
 		TARGET_ARTICLE,
-		SCROLL_DELAY,
-		FINISH_SCROLL_DELAY
+		SCROLL_DELAY
 	} from '$lib/constants';
 	import {
 		searchArticles,
@@ -42,8 +42,8 @@
 	let searchTimeout: number = 0;
 	let abortController: AbortController | null = null;
 	let visited = new Set<string>();
-	let pathContainer = $state<HTMLDivElement | null>(null);
 	let isLoadingInitial = $state(false);
+	let isNearBottom = $state(true);
 
 	// Derived states
 	let cycleIndexes = $derived.by(() => {
@@ -133,31 +133,37 @@
 		}
 	});
 
-	// Combined scroll effect for both running and finished states
+	// Track whether user is near the bottom (ChatGPT-like behavior)
 	$effect(() => {
-		if (!pathContainer) return;
-		if (journeyState.status !== 'RUNNING' && journeyState.status !== 'FINISHED') return;
+		const updateNearBottom = () => {
+			const scrollingElement = document.scrollingElement ?? document.documentElement;
+			const distanceToBottom =
+				scrollingElement.scrollHeight -
+				scrollingElement.scrollTop -
+				scrollingElement.clientHeight;
+			isNearBottom = distanceToBottom <= 240;
+		};
 
-		const delay = journeyState.status === 'FINISHED' ? FINISH_SCROLL_DELAY : SCROLL_DELAY;
-
-		setTimeout(() => {
-			if (pathContainer) {
-				const scrollTarget = pathContainer.offsetTop + pathContainer.scrollHeight;
-				window.scrollTo({ top: scrollTarget, behavior: 'smooth' });
-			}
-		}, delay);
+		updateNearBottom();
+		window.addEventListener('scroll', updateNearBottom, { passive: true });
+		window.addEventListener('resize', updateNearBottom, { passive: true });
+		return () => {
+			window.removeEventListener('scroll', updateNearBottom);
+			window.removeEventListener('resize', updateNearBottom);
+		};
 	});
 
-	// Watch for path changes to scroll
+	// Auto-scroll while RUNNING only if user is near bottom
 	$effect(() => {
-		if (journeyState.status === 'RUNNING' && pathContainer && journeyState.path.length > 0) {
-			setTimeout(() => {
-				if (pathContainer && journeyState.status === 'RUNNING') {
-					const scrollTarget = pathContainer.offsetTop + pathContainer.scrollHeight;
-					window.scrollTo({ top: scrollTarget, behavior: 'smooth' });
-				}
-			}, SCROLL_DELAY);
-		}
+		if (journeyState.path.length === 0) return;
+		if (journeyState.status !== 'RUNNING') return;
+		if (!isNearBottom) return;
+
+		const timeout = setTimeout(() => {
+			scrollToBottom();
+		}, SCROLL_DELAY);
+
+		return () => clearTimeout(timeout);
 	});
 
 	// Journey functions
@@ -220,6 +226,7 @@
 			searchQuery = '';
 			searchResults = [];
 			isLoadingInitial = false;
+			isNearBottom = true;
 
 			// Start the loop
 			let currentTitle = initialTitle;
@@ -333,6 +340,12 @@
 		visited.clear();
 		abortController = null;
 		isLoadingInitial = false;
+		isNearBottom = true;
+	}
+
+	function scrollToBottom(): void {
+		const scrollingElement = document.scrollingElement ?? document.documentElement;
+		window.scrollTo({ top: scrollingElement.scrollHeight, behavior: 'smooth' });
 	}
 </script>
 
@@ -369,7 +382,15 @@
 				</Popover.Trigger>
 				<Popover.Content side="top" align="end" sideOffset={4} class="z-50 w-64 p-3 text-sm">
 					<p>
-						Wikisophy is an interactive demonstration of the Wikipedia "Getting to Philosophy"
+						Wikisophy is an interactive demonstration of the
+						<a
+							href="https://en.wikipedia.org/wiki/Wikipedia:Getting_to_Philosophy"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="underline"
+						>
+							Wikipedia's Getting to Philosophy
+						</a>
 						phenomenon. This project is licensed under the
 						<a
 							href="https://github.com/mdonmez/wikisophy/blob/main/LICENSE"
@@ -479,7 +500,7 @@
 
 		<!-- Path Section -->
 		{#if journeyState.path.length > 0 || journeyState.status === 'RUNNING' || isLoadingInitial}
-			<div class="mx-auto mt-12 max-w-3xl" bind:this={pathContainer}>
+			<div class="mx-auto mt-12 max-w-3xl">
 				<div class="flex flex-col gap-4">
 					{#each journeyState.path as article, index (article.title + index)}
 						{@const isCycleItem = cycleIndexes.includes(index)}
@@ -537,6 +558,7 @@
 							</Item.Root>
 						{/key}
 					{/if}
+
 				</div>
 			</div>
 		{/if}
@@ -570,5 +592,24 @@
 				</div>
 			{/if}
 		</div>
+
 	</main>
 </div>
+
+<!-- Floating Action Button: Show Latest -->
+{#if !isNearBottom && journeyState.status !== 'IDLE' && journeyState.path.length > 0}
+	<div
+		in:fly={{ y: 100, duration: 300, easing: cubicInOut }}
+		out:fly={{ y: 100, duration: 300, easing: cubicInOut }}
+		class="fixed bottom-8 left-1/2 z-50 -translate-x-1/2"
+	>
+		<Button
+			onclick={scrollToBottom}
+			size="icon"
+			class="shadow-lg"
+			aria-label="Scroll to latest article"
+		>
+			<ChevronDownIcon />
+		</Button>
+	</div>
+{/if}
