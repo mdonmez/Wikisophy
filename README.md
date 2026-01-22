@@ -8,7 +8,7 @@
 
 **Philosophy, origin of everything.**
 
-_An interactive demonstration of the Wikipedia "Getting to Philosophy" phenomenon_
+_An interactive demonstration of the Wikipedia "Getting to Philosophy" phenomenon._
 
 ## About
 
