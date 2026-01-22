@@ -138,9 +138,7 @@
 		const updateNearBottom = () => {
 			const scrollingElement = document.scrollingElement ?? document.documentElement;
 			const distanceToBottom =
-				scrollingElement.scrollHeight -
-				scrollingElement.scrollTop -
-				scrollingElement.clientHeight;
+				scrollingElement.scrollHeight - scrollingElement.scrollTop - scrollingElement.clientHeight;
 			isNearBottom = distanceToBottom <= 240;
 		};
 
@@ -411,10 +409,10 @@
 
 			<Button onclick={toggleMode} variant="outline" size="icon">
 				<SunIcon
-					class="h-[1.2rem] w-[1.2rem] scale-100 rotate-0 !transition-all dark:scale-0 dark:-rotate-90"
+					class="h-[1.2rem] w-[1.2rem] scale-100 rotate-0 transition-all! dark:scale-0 dark:-rotate-90"
 				/>
 				<MoonIcon
-					class="absolute h-[1.2rem] w-[1.2rem] scale-0 rotate-90 !transition-all dark:scale-100 dark:rotate-0"
+					class="absolute h-[1.2rem] w-[1.2rem] scale-0 rotate-90 transition-all! dark:scale-100 dark:rotate-0"
 				/>
 				<span class="sr-only">Toggle theme</span>
 			</Button>
@@ -458,7 +456,7 @@
 				variant="outline"
 				size="icon"
 				aria-label="Random article"
-				class="h-[38px] w-[38px] shrink-0"
+				class="h-9.5 w-9.5 shrink-0"
 				onclick={handleRandomArticle}
 				disabled={isJourneyActive}
 			>
@@ -558,7 +556,6 @@
 							</Item.Root>
 						{/key}
 					{/if}
-
 				</div>
 			</div>
 		{/if}
@@ -592,7 +589,6 @@
 				</div>
 			{/if}
 		</div>
-
 	</main>
 </div>
 
