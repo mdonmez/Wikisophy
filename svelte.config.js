@@ -16,7 +16,7 @@ const config = {
 		}),
 		// Set base path for GitHub Pages subdirectory deployment
 		paths: {
-			base: '/Wikisophy'
+			base: '/wikisophy'
 		}
 	}
 };

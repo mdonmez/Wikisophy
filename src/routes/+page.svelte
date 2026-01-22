@@ -4,7 +4,7 @@
 	import MoonIcon from '@lucide/svelte/icons/moon';
 	import DicesIcon from '@lucide/svelte/icons/dices';
 	import XIcon from '@lucide/svelte/icons/x';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { Button, buttonVariants } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Command from '$lib/components/ui/command/index.js';
 	import * as Item from '$lib/components/ui/item/index.js';
@@ -347,38 +347,39 @@
 
 		<div class="flex items-center gap-2">
 			<Popover.Root>
-				<Popover.Trigger>
-					<Button variant="outline" size="icon" aria-label="About Wikisophy">
-						<!-- simple info glyph -->
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							class="h-4 w-4"
-							fill="none"
-							viewBox="0 0 24 24"
-							stroke="currentColor"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z"
-							/>
-						</svg>
-					</Button>
+				<Popover.Trigger
+					class={buttonVariants({ variant: 'outline', size: 'icon' })}
+					aria-label="About Wikisophy"
+				>
+					<!-- simple info glyph -->
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						class="h-4 w-4"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke="currentColor"
+					>
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z"
+						/>
+					</svg>
 				</Popover.Trigger>
 				<Popover.Content side="top" align="end" sideOffset={4} class="z-50 w-64 p-3 text-sm">
 					<p>
 						Wikisophy is an interactive demonstration of the Wikipedia "Getting to Philosophy"
 						phenomenon. This project is licensed under the
 						<a
-							href="https://github.com/mdonmez/Wikisophy/blob/main/LICENSE"
+							href="https://github.com/mdonmez/wikisophy/blob/main/LICENSE"
 							target="_blank"
 							rel="noopener noreferrer"
 							class="underline">MIT License</a
 						>
 						and source code is
 						<a
-							href="https://github.com/mdonmez/Wikisophy"
+							href="https://github.com/mdonmez/wikisophy"
 							target="_blank"
 							rel="noopener noreferrer"
 							class="underline">available</a
