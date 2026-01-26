@@ -445,8 +445,8 @@
 				Philosophy, origin of everything.
 			</h1>
 			<h4 class="scroll-m-20 text-xl font-semibold tracking-tight">
-				Did you know that if you follow the first links in almost all Wikipedia articles, you can
-				end up at philosophy?
+				Did you know that if you don't follow the first links in almost all Wikipedia articles, you
+				can end up at philosophy?
 			</h4>
 		</div>
 
