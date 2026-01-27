@@ -354,280 +354,292 @@
 	}
 </script>
 
-<!-- Header -->
-<header class="sticky top-0 z-50 w-full border-b bg-background">
-	<div class="flex items-center justify-between px-4 py-2">
-		<div class="logo-transition">
-			{#if mode.current === 'light'}
-				<img src="{base}/logo_black.svg" alt="Wikisophy Logo" class="h-12 w-12" />
-			{:else}
-				<img src="{base}/logo_white.svg" alt="Wikisophy Logo" class="h-12 w-12" />
-			{/if}
-		</div>
+<svelte:head>
+	<title>Wikisophy — Wikipedia to Philosophy Journey</title>
+	<meta
+		name="description"
+		content="Explore the Wikipedia 'Getting to Philosophy' phenomenon. Start from any article and follow the first link to reach Philosophy."
+	/>
+</svelte:head>
 
-		<div class="flex items-center gap-2">
-			<Popover.Root>
-				<Popover.Trigger
-					class={buttonVariants({ variant: 'outline', size: 'icon' })}
-					aria-label="About Wikisophy"
-				>
-					<!-- simple info glyph -->
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-4 w-4"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z"
-						/>
-					</svg>
-				</Popover.Trigger>
-				<Popover.Content side="top" align="end" sideOffset={4} class="z-50 w-64 p-3 text-sm">
-					<p>
-						Wikisophy is an interactive demonstration of the
-						<a
-							href="https://en.wikipedia.org/wiki/Wikipedia:Getting_to_Philosophy"
-							target="_blank"
-							rel="noopener noreferrer"
-							class="underline"
-						>
-							Wikipedia's Getting to Philosophy
-						</a>
-						phenomenon. This project is licensed under the
-						<a
-							href="https://github.com/mdonmez/wikisophy/blob/main/LICENSE"
-							target="_blank"
-							rel="noopener noreferrer"
-							class="underline">MIT License</a
-						>
-						and source code is
-						<a
-							href="https://github.com/mdonmez/wikisophy"
-							target="_blank"
-							rel="noopener noreferrer"
-							class="underline">available</a
-						>.
-					</p>
-				</Popover.Content>
-			</Popover.Root>
-
-			<Button
-				onclick={() => {
-					// Add theme-changing class to prevent transition flicker
-					document.body.classList.add('theme-changing');
-					toggleMode();
-					// Remove the class after a brief delay
-					setTimeout(() => {
-						document.body.classList.remove('theme-changing');
-					}, 50);
-				}}
-				variant="outline"
-				size="icon"
-			>
-				<SunIcon
-					class="h-[1.2rem] w-[1.2rem] scale-100 rotate-0 transition-all! dark:scale-0 dark:-rotate-90"
-				/>
-				<MoonIcon
-					class="absolute h-[1.2rem] w-[1.2rem] scale-0 rotate-90 transition-all! dark:scale-100 dark:rotate-0"
-				/>
-				<span class="sr-only">Toggle theme</span>
-			</Button>
-
-			{#if isJourneyActive}
-				<div
-					in:fly={{ x: 50, duration: 250, easing: cubicInOut }}
-					out:fly={{ x: 50, duration: 250, easing: cubicInOut }}
-				>
-					<Button
-						variant="destructive"
-						size="icon"
-						aria-label="Cancel journey"
-						onclick={cancelJourney}
-					>
-						<XIcon />
-					</Button>
-				</div>
-			{/if}
-		</div>
-	</div>
-</header>
-
-<!-- Main Content -->
-<div class="container mx-auto px-4">
-	<main class="py-8">
-		<!-- Hero Section -->
-		<div class="mx-auto flex max-w-3xl flex-col gap-6 pt-2">
-			<h1 class="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
-				Philosophy, origin of everything.
-			</h1>
-
-			<h4 class="scroll-m-20 text-xl font-semibold tracking-tight">
-				Did you know that if you follow the first links in almost all Wikipedia articles, you can
-				end up at philosophy?
-			</h4>
-		</div>
-
-		<!-- Search Bar -->
-		<div class="mx-auto mt-8 flex max-w-3xl items-start gap-3">
-			<Button
-				variant="outline"
-				size="icon"
-				aria-label="Random article"
-				class="h-9.5 w-9.5 shrink-0"
-				onclick={handleRandomArticle}
-				disabled={isJourneyActive}
-			>
-				<DicesIcon />
-			</Button>
-			<Command.Root class="flex-1 rounded-md border shadow-xs" shouldFilter={false}>
-				<Command.Input
-					placeholder="Search Wikipedia article..."
-					bind:value={searchQuery}
-					disabled={isJourneyActive}
-				/>
-				{#if searchQuery.trim() !== '' && searchResults.length > 0}
-					<Command.List class="border-t">
-						<Command.Group>
-							{#each searchResults as result}
-								<Command.Item
-									value={result.title}
-									onSelect={() => {
-										startJourney(result.title);
-									}}
-								>
-									<div class="flex flex-col gap-1">
-										<div class="font-medium">{result.title}</div>
-										{#if result.description}
-											<div class="text-xs text-muted-foreground">{result.description}</div>
-										{/if}
-									</div>
-								</Command.Item>
-							{/each}
-						</Command.Group>
-					</Command.List>
-				{:else if searchQuery.trim() !== '' && !isSearching}
-					<Command.List class="border-t">
-						<Command.Empty>No results found.</Command.Empty>
-					</Command.List>
-				{/if}
-			</Command.Root>
-		</div>
-
-		<!-- Path Section -->
-		{#if journeyState.path.length > 0 || journeyState.status === 'RUNNING' || isLoadingInitial}
-			<div class="mx-auto mt-12 max-w-3xl">
-				<div class="flex flex-col gap-4">
-					{#each journeyState.path as article, index (article.title + index)}
-						{@const isCycleItem = cycleIndexes.includes(index)}
-						<Item.Root
-							variant="outline"
-							class={`transition-shadow hover:shadow-md ${isCycleItem ? 'animate-pulse border-red-500' : ''}`}
-						>
-							{#snippet child({ props })}
-								<a href={article.url} target="_blank" rel="noopener noreferrer" {...props}>
-									<div class="flex items-center gap-3">
-										<Badge class="h-5 w-7 rounded-sm px-1 font-mono tabular-nums">
-											{index + 1}
-										</Badge>
-									</div>
-									<Item.Media variant="image">
-										{#if article.thumbnail}
-											{@const isSvg = article.thumbnail.includes('.svg')}
-											<img
-												src={article.thumbnail}
-												alt={article.title}
-												width="32"
-												height="32"
-												class={`size-8 rounded object-cover ${isSvg ? 'bg-white p-0.5' : ''}`}
-											/>
-										{:else}
-											<img
-												src={getAvatarUrl(article.title)}
-												alt={article.title}
-												width="32"
-												height="32"
-												class="size-8 rounded bg-muted/50 p-0.5 opacity-70"
-											/>
-										{/if}
-									</Item.Media>
-									<Item.Content>
-										<Item.Title>{article.title}</Item.Title>
-										<Item.Description>{getFirstSentence(article.extract)}</Item.Description>
-									</Item.Content>
-								</a>
-							{/snippet}
-						</Item.Root>
-					{/each}
-
-					<!-- Loading Indicator -->
-					{#if journeyState.status === 'RUNNING' || isLoadingInitial}
-						{#key 'loading-indicator'}
-							<Item.Root variant="outline">
-								{#snippet child({ props })}
-									<div {...props} class="flex items-center justify-center py-4">
-										<div
-											class="h-2 w-2 animate-[breathe_3s_ease-in-out_infinite] rounded-full bg-foreground"
-										></div>
-									</div>
-								{/snippet}
-							</Item.Root>
-						{/key}
+<div class="flex min-h-screen flex-col bg-background font-sans text-foreground">
+	<!-- Header -->
+	<header class="sticky top-0 z-50 w-full border-b bg-background">
+		<div class="flex items-center justify-between px-4 py-2">
+			<div class="flex items-center gap-3">
+				<div class="logo-transition">
+					{#if mode.current === 'light'}
+						<img src="{base}/logo_black.svg" alt="Wikisophy Logo" class="h-12 w-12" />
+					{:else}
+						<img src="{base}/logo_white.svg" alt="Wikisophy Logo" class="h-12 w-12" />
 					{/if}
 				</div>
 			</div>
-		{/if}
 
-		<!-- Outcome Message and Actions -->
-		<div>
-			{#if journeyState.status === 'FINISHED' && journeyState.outcome}
-				<div class="mx-auto mt-12 max-w-3xl text-center">
-					<div class="mb-6 text-lg font-semibold">
-						{outcomeMessage()}
-					</div>
-				</div>
-			{/if}
+			<div class="flex items-center gap-2">
+				<Popover.Root>
+					<Popover.Trigger
+						class={buttonVariants({ variant: 'outline', size: 'icon' })}
+						aria-label="About Wikisophy"
+					>
+						<!-- simple info glyph -->
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							class="h-4 w-4"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke="currentColor"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z"
+							/>
+						</svg>
+					</Popover.Trigger>
+					<Popover.Content side="top" align="end" sideOffset={4} class="z-50 w-64 p-3 text-sm">
+						<p>
+							Wikisophy is an interactive demonstration of the
+							<a
+								href="https://en.wikipedia.org/wiki/Wikipedia:Getting_to_Philosophy"
+								target="_blank"
+								rel="noopener noreferrer"
+								class="underline"
+							>
+								Wikipedia's Getting to Philosophy
+							</a>
+							phenomenon. This project is licensed under the
+							<a
+								href="https://github.com/mdonmez/wikisophy/blob/main/LICENSE"
+								target="_blank"
+								rel="noopener noreferrer"
+								class="underline">MIT License</a
+							>
+							and source code is
+							<a
+								href="https://github.com/mdonmez/wikisophy"
+								target="_blank"
+								rel="noopener noreferrer"
+								class="underline">available</a
+							>.
+						</p>
+					</Popover.Content>
+				</Popover.Root>
 
-			<!-- Quote Section (Success Only) -->
-			{#if journeyState.outcome === 'success' && randomQuote()}
-				{@const quote = randomQuote()}
-				{#if quote}
-					<div class="mx-auto mt-12 max-w-3xl">
-						<blockquote class="border-s-2 ps-6 italic">
-							{quote.text} — {quote.author}
-						</blockquote>
+				<Button
+					onclick={() => {
+						// Add theme-changing class to prevent transition flicker
+						document.body.classList.add('theme-changing');
+						toggleMode();
+						// Remove the class after a brief delay
+						setTimeout(() => {
+							document.body.classList.remove('theme-changing');
+						}, 50);
+					}}
+					variant="outline"
+					size="icon"
+				>
+					<SunIcon
+						class="h-[1.2rem] w-[1.2rem] scale-100 rotate-0 transition-all! dark:scale-0 dark:-rotate-90"
+					/>
+					<MoonIcon
+						class="absolute h-[1.2rem] w-[1.2rem] scale-0 rotate-90 transition-all! dark:scale-100 dark:rotate-0"
+					/>
+					<span class="sr-only">Toggle theme</span>
+				</Button>
+
+				{#if isJourneyActive}
+					<div
+						in:fly={{ x: 50, duration: 250, easing: cubicInOut }}
+						out:fly={{ x: 50, duration: 250, easing: cubicInOut }}
+					>
+						<Button
+							variant="destructive"
+							size="icon"
+							aria-label="Cancel journey"
+							onclick={cancelJourney}
+						>
+							<XIcon />
+						</Button>
 					</div>
 				{/if}
-			{/if}
+			</div>
+		</div>
+	</header>
 
-			<!-- New Journey Button -->
-			{#if journeyState.status === 'FINISHED' && journeyState.outcome}
-				<div class="mx-auto mt-12 max-w-3xl text-center">
-					<Button onclick={resetJourney}>Start a New Journey</Button>
+	<!-- Main Content -->
+	<div class="container mx-auto px-4">
+		<main class="py-8">
+			<!-- Hero Section -->
+			<div class="mx-auto flex max-w-3xl flex-col gap-6 pt-2">
+				<h1 class="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
+					Philosophy, origin of everything.
+				</h1>
+
+				<h4 class="scroll-m-20 text-xl font-semibold tracking-tight">
+					Did you know that if you follow the first links in almost all Wikipedia articles, you can
+					end up at philosophy?
+				</h4>
+			</div>
+
+			<!-- Search Bar -->
+			<div class="mx-auto mt-8 flex max-w-3xl items-start gap-3">
+				<Button
+					variant="outline"
+					size="icon"
+					aria-label="Random article"
+					class="h-9.5 w-9.5 shrink-0"
+					onclick={handleRandomArticle}
+					disabled={isJourneyActive}
+				>
+					<DicesIcon />
+				</Button>
+				<Command.Root class="flex-1 rounded-md border shadow-xs" shouldFilter={false}>
+					<Command.Input
+						placeholder="Search Wikipedia article..."
+						bind:value={searchQuery}
+						disabled={isJourneyActive}
+					/>
+					{#if searchQuery.trim() !== '' && searchResults.length > 0}
+						<Command.List class="border-t">
+							<Command.Group>
+								{#each searchResults as result}
+									<Command.Item
+										value={result.title}
+										onSelect={() => {
+											startJourney(result.title);
+										}}
+									>
+										<div class="flex flex-col gap-1">
+											<div class="font-medium">{result.title}</div>
+											{#if result.description}
+												<div class="text-xs text-muted-foreground">{result.description}</div>
+											{/if}
+										</div>
+									</Command.Item>
+								{/each}
+							</Command.Group>
+						</Command.List>
+					{:else if searchQuery.trim() !== '' && !isSearching}
+						<Command.List class="border-t">
+							<Command.Empty>No results found.</Command.Empty>
+						</Command.List>
+					{/if}
+				</Command.Root>
+			</div>
+
+			<!-- Path Section -->
+			{#if journeyState.path.length > 0 || journeyState.status === 'RUNNING' || isLoadingInitial}
+				<div class="mx-auto mt-12 max-w-3xl">
+					<div class="flex flex-col gap-4">
+						{#each journeyState.path as article, index (article.title + index)}
+							{@const isCycleItem = cycleIndexes.includes(index)}
+							<Item.Root
+								variant="outline"
+								class={`transition-shadow hover:shadow-md ${isCycleItem ? 'animate-pulse border-red-500' : ''}`}
+							>
+								{#snippet child({ props })}
+									<a href={article.url} target="_blank" rel="noopener noreferrer" {...props}>
+										<div class="flex items-center gap-3">
+											<Badge class="h-5 w-7 rounded-sm px-1 font-mono tabular-nums">
+												{index + 1}
+											</Badge>
+										</div>
+										<Item.Media variant="image">
+											{#if article.thumbnail}
+												{@const isSvg = article.thumbnail.includes('.svg')}
+												<img
+													src={article.thumbnail}
+													alt={article.title}
+													width="32"
+													height="32"
+													class={`size-8 rounded object-cover ${isSvg ? 'bg-white p-0.5' : ''}`}
+												/>
+											{:else}
+												<img
+													src={getAvatarUrl(article.title)}
+													alt={article.title}
+													width="32"
+													height="32"
+													class="size-8 rounded bg-muted/50 p-0.5 opacity-70"
+												/>
+											{/if}
+										</Item.Media>
+										<Item.Content>
+											<Item.Title>{article.title}</Item.Title>
+											<Item.Description>{getFirstSentence(article.extract)}</Item.Description>
+										</Item.Content>
+									</a>
+								{/snippet}
+							</Item.Root>
+						{/each}
+
+						<!-- Loading Indicator -->
+						{#if journeyState.status === 'RUNNING' || isLoadingInitial}
+							{#key 'loading-indicator'}
+								<Item.Root variant="outline">
+									{#snippet child({ props })}
+										<div {...props} class="flex items-center justify-center py-4">
+											<div
+												class="h-2 w-2 animate-[breathe_3s_ease-in-out_infinite] rounded-full bg-foreground"
+											></div>
+										</div>
+									{/snippet}
+								</Item.Root>
+							{/key}
+						{/if}
+					</div>
 				</div>
 			{/if}
-		</div>
-	</main>
-</div>
 
-<!-- Floating Action Button: Show Latest -->
-{#if !isNearBottom && journeyState.status !== 'IDLE' && journeyState.path.length > 0}
-	<div
-		in:fly={{ y: 100, duration: 300, easing: cubicInOut }}
-		out:fly={{ y: 100, duration: 300, easing: cubicInOut }}
-		class="fixed bottom-8 left-1/2 z-50 -translate-x-1/2"
-	>
-		<Button
-			onclick={scrollToBottom}
-			size="icon"
-			class="shadow-lg"
-			aria-label="Scroll to latest article"
-		>
-			<ChevronDownIcon />
-		</Button>
+			<!-- Outcome Message and Actions -->
+			<div>
+				{#if journeyState.status === 'FINISHED' && journeyState.outcome}
+					<div class="mx-auto mt-12 max-w-3xl text-center">
+						<div class="mb-6 text-lg font-semibold">
+							{outcomeMessage()}
+						</div>
+					</div>
+				{/if}
+
+				<!-- Quote Section (Success Only) -->
+				{#if journeyState.outcome === 'success' && randomQuote()}
+					{@const quote = randomQuote()}
+					{#if quote}
+						<div class="mx-auto mt-12 max-w-3xl">
+							<blockquote class="border-s-2 ps-6 italic">
+								{quote.text} — {quote.author}
+							</blockquote>
+						</div>
+					{/if}
+				{/if}
+
+				<!-- New Journey Button -->
+				{#if journeyState.status === 'FINISHED' && journeyState.outcome}
+					<div class="mx-auto mt-12 max-w-3xl text-center">
+						<Button onclick={resetJourney}>Start a New Journey</Button>
+					</div>
+				{/if}
+			</div>
+		</main>
 	</div>
-{/if}
+
+	<!-- Floating Action Button: Show Latest -->
+	{#if !isNearBottom && journeyState.status !== 'IDLE' && journeyState.path.length > 0}
+		<div
+			in:fly={{ y: 100, duration: 300, easing: cubicInOut }}
+			out:fly={{ y: 100, duration: 300, easing: cubicInOut }}
+			class="fixed bottom-8 left-1/2 z-50 -translate-x-1/2"
+		>
+			<Button
+				onclick={scrollToBottom}
+				size="icon"
+				class="shadow-lg"
+				aria-label="Scroll to latest article"
+			>
+				<ChevronDownIcon />
+			</Button>
+		</div>
+	{/if}
+</div>
