@@ -70,4 +70,4 @@ You can contribute by [opening an issue](https://docs.github.com/en/issues/track
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE.MD).
+This project is licensed under the [MIT License](LICENSE).
