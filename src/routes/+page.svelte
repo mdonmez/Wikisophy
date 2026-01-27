@@ -18,7 +18,8 @@
 		SEARCH_DEBOUNCE,
 		SEARCH_LIMIT,
 		TARGET_ARTICLE,
-		SCROLL_DELAY
+		SCROLL_DELAY,
+		FINISH_SCROLL_DELAY
 	} from '$lib/constants';
 	import {
 		searchArticles,
@@ -154,14 +155,20 @@
 	// Auto-scroll while RUNNING only if user is near bottom
 	$effect(() => {
 		if (journeyState.path.length === 0) return;
-		if (journeyState.status !== 'RUNNING') return;
 		if (!isNearBottom) return;
 
-		const timeout = setTimeout(() => {
-			scrollToBottom();
-		}, SCROLL_DELAY);
-
-		return () => clearTimeout(timeout);
+		// Scroll if running or just finished
+		if (journeyState.status === 'RUNNING') {
+			const timeout = setTimeout(() => {
+				scrollToBottom();
+			}, SCROLL_DELAY);
+			return () => clearTimeout(timeout);
+		} else if (journeyState.status === 'FINISHED') {
+			const timeout = setTimeout(() => {
+				scrollToBottom();
+			}, FINISH_SCROLL_DELAY);
+			return () => clearTimeout(timeout);
+		}
 	});
 
 	// Journey functions
