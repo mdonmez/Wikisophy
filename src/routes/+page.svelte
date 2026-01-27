@@ -357,11 +357,13 @@
 <!-- Header -->
 <header class="sticky top-0 z-50 w-full border-b bg-background">
 	<div class="flex items-center justify-between px-4 py-2">
-		{#if mode.current === 'light'}
-			<img src="{base}/logo_black.svg" alt="Wikisophy Logo" class="h-12 w-12" />
-		{:else}
-			<img src="{base}/logo_white.svg" alt="Wikisophy Logo" class="h-12 w-12" />
-		{/if}
+		<div class="logo-transition">
+			{#if mode.current === 'light'}
+				<img src="{base}/logo_black.svg" alt="Wikisophy Logo" class="h-12 w-12" />
+			{:else}
+				<img src="{base}/logo_white.svg" alt="Wikisophy Logo" class="h-12 w-12" />
+			{/if}
+		</div>
 
 		<div class="flex items-center gap-2">
 			<Popover.Root>
@@ -414,7 +416,19 @@
 				</Popover.Content>
 			</Popover.Root>
 
-			<Button onclick={toggleMode} variant="outline" size="icon">
+			<Button
+				onclick={() => {
+					// Add theme-changing class to prevent transition flicker
+					document.body.classList.add('theme-changing');
+					toggleMode();
+					// Remove the class after a brief delay
+					setTimeout(() => {
+						document.body.classList.remove('theme-changing');
+					}, 50);
+				}}
+				variant="outline"
+				size="icon"
+			>
 				<SunIcon
 					class="h-[1.2rem] w-[1.2rem] scale-100 rotate-0 transition-all! dark:scale-0 dark:-rotate-90"
 				/>

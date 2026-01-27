@@ -131,3 +131,13 @@
 		opacity: 0.6;
 	}
 }
+
+/* Optimize logo transitions for instant theme switching */
+.logo-transition {
+	transition: none !important;
+}
+
+/* Disable body transitions during theme changes to prevent flicker */
+body.theme-changing {
+	transition: none !important;
+}

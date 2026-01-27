@@ -5,5 +5,5 @@
 	let { children } = $props();
 </script>
 
-<ModeWatcher />
+<ModeWatcher disableTransitions={true} synchronousModeChanges={true} />
 {@render children()}
