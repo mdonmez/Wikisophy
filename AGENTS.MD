@@ -45,17 +45,13 @@ wikisophy/
 │   │   ├── constants.ts        # Application constants
 │   │   ├── types.ts           # TypeScript type definitions
 │   │   ├── utils.ts           # Utility functions (cn helper)
-│   │   ├── wikipedia.ts       # Wikipedia API interaction logic
+│   │   ├── wikipedia.ts       # Wikipedia HTML parsing logic
+│   │   ├── wikipedia-client.ts # Client-side Wikipedia API calls
 │   │   └── quotes.ts          # Philosophy quotes collection
 │   └── routes/
 │       ├── +layout.svelte     # Root layout with ModeWatcher
 │       ├── +page.svelte       # Main application page
-│       ├── layout.css         # Global styles and CSS variables
-│       └── api/               # SvelteKit API routes
-│           ├── preview/       # Article preview endpoint
-│           ├── random/        # Random article endpoint
-│           ├── search/        # Article search endpoint
-│           └── step/          # Next link finder endpoint
+│       └── layout.css         # Global styles and CSS variables
 ├── static/                    # Static assets
 ├── components.json           # shadcn-svelte configuration
 ├── svelte.config.js         # SvelteKit configuration
@@ -88,35 +84,35 @@ The heart of the application is the link parsing logic that follows specific rul
 - `fetchArticleHtml(title, lang)` - Fetches section 0 (intro) HTML from Wikipedia API
 - `findFirstWikiLink(html)` - Parses HTML to find first valid link using character-by-character scanning with parenthesis tracking
 
-### 2. API Routes (SvelteKit Server Endpoints)
+### 2. Client-Side API Utilities (`src/lib/wikipedia-client.ts`)
 
-#### `/api/preview` (GET)
+All API interactions are handled client-side with direct calls to Wikipedia endpoints:
 
-- Fetches article summary using Wikipedia REST API
+#### `fetchPreview(title)`
+
+- Fetches article summary using Wikipedia REST API (`/api/rest_v1/page/summary/{title}`)
 - Returns: title, extract, thumbnail
-- Cache: 1 hour
+- No caching (direct fetch)
 
-#### `/api/random` (GET)
+#### `searchArticles(query, limit)`
 
-- Fetches random Wikipedia article
-- Returns: article title
-- Cache: None (always fresh)
-
-#### `/api/search` (GET)
-
-- Searches Wikipedia using OpenSearch API
-- Query params: `q` (query), `limit` (default: 10)
+- Searches Wikipedia using OpenSearch API (`/w/api.php?action=opensearch`)
 - Returns: array of SearchResults
-- Cache: 5 minutes
+- No caching (direct fetch)
 
-#### `/api/step` (POST)
+#### `fetchRandomArticle()`
+
+- Fetches random Wikipedia article using Random API (`/w/api.php?action=query&list=random`)
+- Returns: article title
+- No caching (always fresh)
+
+#### `findNextStep(title)`
 
 - Finds next article in the chain
-- Body: `{ title: string }`
 - Process:
-  1. Fetches article HTML
-  2. Finds first valid link
-  3. Fetches preview of next article
+  1. Fetches article HTML via `fetchArticleHtml`
+  2. Finds first valid link via `findFirstWikiLink`
+  3. Fetches preview of next article via `fetchPreview`
 - Returns: title, nextLink, nextPreview
 
 ### 3. Journey State Machine (`src/routes/+page.svelte`)
@@ -142,7 +138,7 @@ The heart of the application is the link parsing logic that follows specific rul
 2. For each step (max 50):
    a. Check if reached "Philosophy" → SUCCESS
    b. Check if article already visited → CYCLE
-   c. Fetch next article via /api/step
+   c. Fetch next article via findNextStep (client-side)
    d. If no next link → DEAD_END
    e. Add article to path
    f. Continue with next article
@@ -285,7 +281,7 @@ bun run lint         # Lint with ESLint
 2. **Svelte 5 Runes** - Always use $state, $derived, $effect, $props
 3. **Tailwind Classes** - Use utility classes, avoid custom CSS
 4. **Component Organization** - UI components in `$lib/components/ui`
-5. **API Routes** - Server logic in `+server.ts` files
+5. **Client-Side API Calls** - Direct Wikipedia API calls in `wikipedia-client.ts`
 6. **Type Safety** - Export/import types from `types.ts`
 
 ## Key Design Patterns
@@ -324,7 +320,7 @@ let outcomeMessage = $derived(() => {
 
 ### 4. Progressive Enhancement
 
-- Server-side API routes handle Wikipedia interaction
+- Client-side API calls handle Wikipedia interaction
 - Client handles UI state and animations
 - Graceful fallbacks for failed API calls
 
@@ -424,6 +420,6 @@ When testing or extending this application:
 
 ---
 
-**Last Updated:** January 19, 2026
+**Last Updated:** January 28, 2026
 **Version:** 0.0.1
 **Status:** Active Development
