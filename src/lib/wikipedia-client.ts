@@ -3,7 +3,7 @@
  * All functions make direct calls to Wikipedia REST and MediaWiki APIs
  */
 
-import { USER_AGENT, WIKIPEDIA_API_URL, WIKIPEDIA_REST_API_URL, SEARCH_LIMIT } from './constants';
+import { WIKIPEDIA_API_URL, WIKIPEDIA_REST_API_URL, SEARCH_LIMIT } from './constants';
 import type {
 	SearchResult,
 	PreviewResponse,
@@ -21,9 +21,7 @@ export async function fetchPreview(title: string): Promise<PreviewResponse | nul
 	const apiUrl = `${WIKIPEDIA_REST_API_URL}/page/summary/${encodeURIComponent(title)}`;
 
 	try {
-		const res = await fetch(apiUrl, {
-			headers: { 'User-Agent': USER_AGENT }
-		});
+		const res = await fetch(apiUrl);
 
 		if (!res.ok) {
 			return null;
@@ -60,9 +58,7 @@ export async function searchArticles(
 	});
 
 	try {
-		const response = await fetch(`${WIKIPEDIA_API_URL}?${params}`, {
-			headers: { 'User-Agent': USER_AGENT }
-		});
+		const response = await fetch(`${WIKIPEDIA_API_URL}?${params}`);
 
 		if (!response.ok) {
 			return [];
@@ -95,9 +91,7 @@ export async function fetchRandomArticle(): Promise<string | null> {
 	});
 
 	try {
-		const res = await fetch(`${WIKIPEDIA_API_URL}?${params}`, {
-			headers: { 'User-Agent': USER_AGENT }
-		});
+		const res = await fetch(`${WIKIPEDIA_API_URL}?${params}`);
 
 		if (!res.ok) {
 			return null;

@@ -19,6 +19,9 @@ export const SEARCH_LIMIT = 10;
 
 /**
  * User-Agent string for Wikipedia API requests
+ * NOTE: Not used in client-side fetch requests due to CORS restrictions.
+ * Browsers automatically send their own User-Agent header.
+ * Kept for documentation/future server-side implementation.
  */
 export const USER_AGENT = 'Wikisophy/2.0 (Educational)';
 

@@ -2,8 +2,6 @@
  * Wikipedia API utilities for fetching and parsing article content
  */
 
-import { USER_AGENT } from './constants';
-
 /**
  * Fetches article HTML from Wikipedia (section 0 only - intro paragraph)
  * @param title - Article title to fetch
@@ -22,9 +20,7 @@ export async function fetchArticleHtml(title: string, lang: string = 'en'): Prom
 	});
 
 	try {
-		const response = await fetch(`https://${lang}.wikipedia.org/w/api.php?${params}`, {
-			headers: { 'User-Agent': USER_AGENT }
-		});
+		const response = await fetch(`https://${lang}.wikipedia.org/w/api.php?${params}`);
 
 		if (!response.ok) return null;
 		const data = await response.json();
