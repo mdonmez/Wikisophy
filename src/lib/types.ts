@@ -21,6 +21,7 @@ export type Article = {
 	extract: string;
 	thumbnail: string | null;
 	url: string;
+	isDisambiguation?: boolean;
 };
 
 /**
@@ -48,6 +49,7 @@ export type PreviewResponse = {
 	title: string;
 	extract: string;
 	thumbnail: string | null;
+	type?: string;
 };
 
 /**
@@ -87,6 +89,7 @@ export type WikipediaSummary = {
 	title: string;
 	extract: string;
 	thumbnail?: { source: string };
+	type?: string;
 };
 
 /**
@@ -110,4 +113,12 @@ export type WikipediaRandomResult = {
 export type Quote = {
 	text: string;
 	author: string;
+};
+
+/**
+ * Disambiguation link option
+ */
+export type DisambiguationLink = {
+	title: string;
+	description: string;
 };

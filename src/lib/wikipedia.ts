@@ -2,6 +2,8 @@
  * Wikipedia API utilities for fetching and parsing article content
  */
 
+import type { DisambiguationLink } from './types';
+
 /**
  * Fetches article HTML from Wikipedia (section 0 only - intro paragraph)
  * @param title - Article title to fetch
@@ -134,4 +136,75 @@ export function findFirstWikiLink(html: string): string | null {
 		}
 	}
 	return null;
+}
+
+/**
+ * Extracts disambiguation links from article HTML
+ *
+ * Disambiguation pages contain a list of links with descriptions
+ * This function parses the HTML to extract those links
+ *
+ * @param html - Article HTML to parse
+ * @returns Array of disambiguation links with titles and descriptions
+ */
+export function extractDisambiguationLinks(html: string): DisambiguationLink[] {
+	if (!html) return [];
+
+	const links: DisambiguationLink[] = [];
+
+	// Remove unwanted sections
+	let cleanHtml = html;
+	const removePatterns = [
+		/<div[^>]*class="[^"]*(?:hatnote|shortdescription|thumb|infobox|vertical-navbox|noexcerpt|noprint|ambox|mwe-math-element)[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+		/<table[\s\S]*?<\/table>/gi,
+		/<sup[\s\S]*?<\/sup>/gi,
+		/<style[\s\S]*?<\/style>/gi,
+		/<script[\s\S]*?<\/script>/gi
+	];
+
+	for (const pattern of removePatterns) {
+		cleanHtml = cleanHtml.replace(pattern, '');
+	}
+
+	// Find all list items (disambiguation pages use <li> elements)
+	const liPattern = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+	let liMatch;
+
+	while ((liMatch = liPattern.exec(cleanHtml)) !== null) {
+		const liContent = liMatch[1];
+
+		// Extract the first link in this list item
+		const linkMatch = /<a\s+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/.exec(liContent);
+		if (!linkMatch) continue;
+
+		const href = linkMatch[1];
+		const linkText = linkMatch[2].replace(/<[^>]+>/g, '').trim();
+
+		// Only include valid Wikipedia article links
+		if (!href.startsWith('/wiki/') || href.substring(6).includes(':')) continue;
+
+		// Get description (text after the link)
+		const descMatch = liContent.substring(liContent.indexOf('</a>') + 4);
+		let description = descMatch
+			.replace(/<[^>]+>/g, '') // Remove HTML tags
+			.replace(/^\s*[,–-]\s*/, '') // Remove leading punctuation
+			.trim();
+
+		// Limit description length
+		if (description.length > 200) {
+			description = description.substring(0, 197) + '...';
+		}
+
+		const title = decodeURIComponent(href.replace('/wiki/', '')).replace(/_/g, ' ');
+
+		// Avoid duplicates
+		if (links.some((link) => link.title === title)) continue;
+
+		links.push({
+			title,
+			description: description || linkText
+		});
+	}
+
+	return links;
 }

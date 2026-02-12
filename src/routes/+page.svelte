@@ -9,10 +9,11 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Command from '$lib/components/ui/command/index.js';
 	import * as Item from '$lib/components/ui/item/index.js';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { PHILOSOPHY_QUOTES } from '$lib/quotes';
 	import { fly } from 'svelte/transition';
 	import { cubicInOut } from 'svelte/easing';
-	import type { Article, SearchResult, JourneyState } from '$lib/types';
+	import type { Article, SearchResult, JourneyState, DisambiguationLink } from '$lib/types';
 	import {
 		MAX_STEPS,
 		SEARCH_DEBOUNCE,
@@ -25,7 +26,8 @@
 		searchArticles,
 		fetchPreview,
 		fetchRandomArticle,
-		findNextStep
+		findNextStep,
+		fetchDisambiguationLinks
 	} from '$lib/wikipedia-client';
 	import { base } from '$app/paths';
 	import * as Popover from '$lib/components/ui/popover/index.js';
@@ -45,6 +47,9 @@
 	let visited = new Set<string>();
 	let isLoadingInitial = $state(false);
 	let isNearBottom = $state(true);
+	let disambiguationLinks = $state<DisambiguationLink[]>([]);
+	let showDisambiguationDialog = $state(false);
+	let pendingDisambiguationTitle = $state<string>('');
 
 	// Derived states
 	let cycleIndexes = $derived.by(() => {
@@ -214,11 +219,23 @@
 				throw new Error('Failed to fetch initial article');
 			}
 
+			// Check if it's a disambiguation page
+			if (previewData.type === 'disambiguation') {
+				// Handle disambiguation
+				isLoadingInitial = false;
+				pendingDisambiguationTitle = initialTitle;
+				const links = await fetchDisambiguationLinks(initialTitle);
+				disambiguationLinks = links;
+				showDisambiguationDialog = true;
+				return;
+			}
+
 			const firstArticle: Article = {
 				title: previewData.title,
 				extract: previewData.extract ?? '',
 				thumbnail: previewData.thumbnail ?? null,
-				url: `https://en.wikipedia.org/wiki/${encodeURIComponent(previewData.title)}`
+				url: `https://en.wikipedia.org/wiki/${encodeURIComponent(previewData.title)}`,
+				isDisambiguation: previewData.type === 'disambiguation'
 			};
 
 			journeyState = {
@@ -234,83 +251,7 @@
 			isNearBottom = true;
 
 			// Start the loop
-			let currentTitle = initialTitle;
-
-			for (let step = 0; step < MAX_STEPS; step++) {
-				// Check abort
-				if (abortController.signal.aborted) {
-					journeyState = {
-						...journeyState,
-						status: 'FINISHED',
-						outcome: 'cancelled'
-					};
-					return;
-				}
-
-				// Check success
-				if (currentTitle.toLowerCase() === TARGET_ARTICLE) {
-					journeyState = {
-						...journeyState,
-						status: 'FINISHED',
-						outcome: 'success'
-					};
-					return;
-				}
-
-				// Check cycle
-				if (visited.has(currentTitle.toLowerCase())) {
-					journeyState = {
-						...journeyState,
-						status: 'FINISHED',
-						outcome: 'cycle'
-					};
-					return;
-				}
-				visited.add(currentTitle.toLowerCase());
-
-				// Fetch next step
-				try {
-					const stepData = await findNextStep(currentTitle);
-
-					// Check dead end
-					if (!stepData.nextLink || !stepData.nextPreview) {
-						journeyState = {
-							...journeyState,
-							status: 'FINISHED',
-							outcome: 'dead_end'
-						};
-						return;
-					}
-
-					// Add to path - use direct mutation instead of spreading
-					const nextArticle: Article = {
-						title: stepData.nextPreview.title,
-						extract: stepData.nextPreview.extract ?? '',
-						thumbnail: stepData.nextPreview.thumbnail ?? null,
-						url: `https://en.wikipedia.org${stepData.nextLink}`
-					};
-
-					journeyState.path.push(nextArticle);
-					journeyState.status = 'RUNNING';
-					currentTitle = stepData.nextPreview.title;
-				} catch (err) {
-					if (!abortController.signal.aborted) {
-						journeyState = {
-							...journeyState,
-							status: 'FINISHED',
-							outcome: 'error'
-						};
-					}
-					return;
-				}
-			}
-
-			// Max steps reached
-			journeyState = {
-				...journeyState,
-				status: 'FINISHED',
-				outcome: 'dead_end'
-			};
+			await continueJourney(initialTitle);
 		} catch (err) {
 			console.error('Journey error:', err);
 			if (!abortController?.signal.aborted) {
@@ -321,6 +262,135 @@
 				};
 			}
 			isLoadingInitial = false;
+		}
+	}
+
+	async function continueJourney(currentTitle: string): Promise<void> {
+		for (let step = 0; step < MAX_STEPS; step++) {
+			// Check abort
+			if (abortController?.signal.aborted) {
+				journeyState = {
+					...journeyState,
+					status: 'FINISHED',
+					outcome: 'cancelled'
+				};
+				return;
+			}
+
+			// Check success
+			if (currentTitle.toLowerCase() === TARGET_ARTICLE) {
+				journeyState = {
+					...journeyState,
+					status: 'FINISHED',
+					outcome: 'success'
+				};
+				return;
+			}
+
+			// Check cycle
+			if (visited.has(currentTitle.toLowerCase())) {
+				journeyState = {
+					...journeyState,
+					status: 'FINISHED',
+					outcome: 'cycle'
+				};
+				return;
+			}
+			visited.add(currentTitle.toLowerCase());
+
+			// Fetch next step
+			try {
+				const stepData = await findNextStep(currentTitle);
+
+				// Check if next step is available
+				if (!stepData.nextLink || !stepData.nextPreview) {
+					journeyState = {
+						...journeyState,
+						status: 'FINISHED',
+						outcome: 'dead_end'
+					};
+					return;
+				}
+
+				// Check if the next article is a disambiguation page
+				if (stepData.nextPreview.type === 'disambiguation') {
+					// Pause journey and show disambiguation dialog
+					pendingDisambiguationTitle = stepData.nextPreview.title;
+					const links = await fetchDisambiguationLinks(stepData.nextPreview.title);
+					disambiguationLinks = links;
+					showDisambiguationDialog = true;
+					return;
+				}
+
+				// Add to path - use direct mutation instead of spreading
+				const nextArticle: Article = {
+					title: stepData.nextPreview.title,
+					extract: stepData.nextPreview.extract ?? '',
+					thumbnail: stepData.nextPreview.thumbnail ?? null,
+					url: `https://en.wikipedia.org${stepData.nextLink}`,
+					isDisambiguation: stepData.nextPreview.type === 'disambiguation'
+				};
+
+				journeyState.path.push(nextArticle);
+				journeyState.status = 'RUNNING';
+				currentTitle = stepData.nextPreview.title;
+			} catch {
+				if (!abortController?.signal.aborted) {
+					journeyState = {
+						...journeyState,
+						status: 'FINISHED',
+						outcome: 'error'
+					};
+				}
+				return;
+			}
+		}
+
+		// Max steps reached
+		journeyState = {
+			...journeyState,
+			status: 'FINISHED',
+			outcome: 'dead_end'
+		};
+	}
+
+	async function handleDisambiguationSelection(selectedTitle: string): Promise<void> {
+		showDisambiguationDialog = false;
+		disambiguationLinks = [];
+
+		// Fetch preview for selected article
+		const previewData = await fetchPreview(selectedTitle);
+
+		if (!previewData) {
+			journeyState = {
+				...journeyState,
+				status: 'FINISHED',
+				outcome: 'error'
+			};
+			return;
+		}
+
+		const selectedArticle: Article = {
+			title: previewData.title,
+			extract: previewData.extract ?? '',
+			thumbnail: previewData.thumbnail ?? null,
+			url: `https://en.wikipedia.org/wiki/${encodeURIComponent(previewData.title)}`,
+			isDisambiguation: previewData.type === 'disambiguation'
+		};
+
+		// If path is empty (disambiguation was at start), initialize the journey
+		if (journeyState.path.length === 0) {
+			journeyState = {
+				status: 'RUNNING',
+				path: [selectedArticle],
+				outcome: null
+			};
+			await continueJourney(selectedTitle);
+		} else {
+			// Otherwise, add to path and continue
+			journeyState.path.push(selectedArticle);
+			journeyState.status = 'RUNNING';
+			await continueJourney(selectedTitle);
 		}
 	}
 
@@ -346,6 +416,9 @@
 		abortController = null;
 		isLoadingInitial = false;
 		isNearBottom = true;
+		showDisambiguationDialog = false;
+		disambiguationLinks = [];
+		pendingDisambiguationTitle = '';
 	}
 
 	function scrollToBottom(): void {
@@ -504,7 +577,7 @@
 					{#if searchQuery.trim() !== '' && searchResults.length > 0}
 						<Command.List class="border-t">
 							<Command.Group>
-								{#each searchResults as result}
+								{#each searchResults as result (result.title)}
 									<Command.Item
 										value={result.title}
 										onSelect={() => {
@@ -643,3 +716,45 @@
 		</div>
 	{/if}
 </div>
+
+<!-- Disambiguation Dialog -->
+<Dialog.Root bind:open={showDisambiguationDialog}>
+	<Dialog.Content class="max-h-[80vh] max-w-2xl overflow-y-auto">
+		<Dialog.Header>
+			<Dialog.Title>Choose a specific article</Dialog.Title>
+			<Dialog.Description>
+				"{pendingDisambiguationTitle}" is a disambiguation page. Please select a specific article to
+				continue your journey to Philosophy.
+			</Dialog.Description>
+		</Dialog.Header>
+		<div class="mt-4 space-y-2">
+			{#each disambiguationLinks as link (link.title)}
+				<button
+					class="w-full rounded-md border p-3 text-left transition-colors hover:bg-muted"
+					onclick={() => handleDisambiguationSelection(link.title)}
+				>
+					<div class="font-semibold">{link.title}</div>
+					{#if link.description}
+						<div class="mt-1 text-sm text-muted-foreground">{link.description}</div>
+					{/if}
+				</button>
+			{/each}
+			{#if disambiguationLinks.length === 0}
+				<div class="py-8 text-center text-muted-foreground">
+					No disambiguation links found. This page may not be a standard disambiguation page.
+				</div>
+			{/if}
+		</div>
+		<Dialog.Footer class="mt-6">
+			<Button
+				variant="outline"
+				onclick={() => {
+					showDisambiguationDialog = false;
+					cancelJourney();
+				}}
+			>
+				Cancel Journey
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>

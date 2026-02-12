@@ -174,15 +174,15 @@ All API interactions are handled client-side with direct calls to Wikipedia endp
 ## Constants (`src/lib/constants.ts`)
 
 ```typescript
-MAX_STEPS = 50                     // Journey step limit
-SEARCH_DEBOUNCE = 150             // Search input delay (ms)
-SEARCH_LIMIT = 10                 // Default search results
-TARGET_ARTICLE = 'philosophy'     // Success target
-SCROLL_DELAY = 150                // Auto-scroll delay (ms)
-FINISH_SCROLL_DELAY = 200         // Final scroll delay (ms)
-USER_AGENT = 'Wikisophy/2.0'     // Wikipedia API header
-WIKIPEDIA_API_URL                 // MediaWiki API endpoint
-WIKIPEDIA_REST_API_URL            // REST API endpoint
+MAX_STEPS = 50; // Journey step limit
+SEARCH_DEBOUNCE = 150; // Search input delay (ms)
+SEARCH_LIMIT = 10; // Default search results
+TARGET_ARTICLE = 'philosophy'; // Success target
+SCROLL_DELAY = 150; // Auto-scroll delay (ms)
+FINISH_SCROLL_DELAY = 200; // Final scroll delay (ms)
+USER_AGENT = 'Wikisophy/2.0'; // Wikipedia API header
+WIKIPEDIA_API_URL; // MediaWiki API endpoint
+WIKIPEDIA_REST_API_URL; // REST API endpoint
 ```
 
 ## Type System (`src/lib/types.ts`)
@@ -242,7 +242,7 @@ $effect(() => {
 
 ```typescript
 // Component props use $props()
-let { children } = $props()
+let { children } = $props();
 ```
 
 ## Styling System
@@ -292,9 +292,9 @@ Search input is debounced using `$effect()` with cleanup:
 
 ```typescript
 $effect(() => {
-  clearTimeout(searchTimeout)
-  searchTimeout = setTimeout(() => handleSearch(searchQuery), SEARCH_DEBOUNCE)
-})
+	clearTimeout(searchTimeout);
+	searchTimeout = setTimeout(() => handleSearch(searchQuery), SEARCH_DEBOUNCE);
+});
 ```
 
 ### 2. Abort Controller Pattern
@@ -302,8 +302,8 @@ $effect(() => {
 Journey uses AbortController for cancellation:
 
 ```typescript
-abortController = new AbortController()
-fetch(url, { signal: abortController.signal })
+abortController = new AbortController();
+fetch(url, { signal: abortController.signal });
 // Later: abortController.abort()
 ```
 

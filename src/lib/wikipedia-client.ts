@@ -10,9 +10,10 @@ import type {
 	StepResponse,
 	WikipediaSummary,
 	WikipediaOpenSearchResult,
-	WikipediaRandomResult
+	WikipediaRandomResult,
+	DisambiguationLink
 } from './types';
-import { fetchArticleHtml, findFirstWikiLink } from './wikipedia';
+import { fetchArticleHtml, findFirstWikiLink, extractDisambiguationLinks } from './wikipedia';
 
 /**
  * Fetch article preview (title, extract, thumbnail)
@@ -31,7 +32,8 @@ export async function fetchPreview(title: string): Promise<PreviewResponse | nul
 		return {
 			title: data.title,
 			extract: data.extract,
-			thumbnail: data.thumbnail?.source ?? null
+			thumbnail: data.thumbnail?.source ?? null,
+			type: data.type
 		};
 	} catch {
 		return null;
@@ -136,4 +138,17 @@ export async function findNextStep(title: string): Promise<StepResponse> {
 		nextLink,
 		nextPreview
 	};
+}
+
+/**
+ * Fetch disambiguation page links
+ */
+export async function fetchDisambiguationLinks(title: string): Promise<DisambiguationLink[]> {
+	const html = await fetchArticleHtml(title);
+
+	if (!html) {
+		return [];
+	}
+
+	return extractDisambiguationLinks(html);
 }
