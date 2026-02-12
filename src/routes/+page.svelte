@@ -334,7 +334,8 @@
 				journeyState.path.push(nextArticle);
 				journeyState.status = 'RUNNING';
 				currentTitle = stepData.nextPreview.title;
-			} catch {
+			} catch (err) {
+				console.error('Error during journey step:', err);
 				if (!abortController?.signal.aborted) {
 					journeyState = {
 						...journeyState,

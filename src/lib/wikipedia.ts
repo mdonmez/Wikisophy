@@ -181,7 +181,8 @@ export function extractDisambiguationLinks(html: string): DisambiguationLink[] {
 		const linkText = linkMatch[2].replace(/<[^>]+>/g, '').trim();
 
 		// Only include valid Wikipedia article links
-		if (!href.startsWith('/wiki/') || href.substring(6).includes(':')) continue;
+		const WIKI_PREFIX = '/wiki/';
+		if (!href.startsWith(WIKI_PREFIX) || href.replace(WIKI_PREFIX, '').includes(':')) continue;
 
 		// Get description (text after the link)
 		const descMatch = liContent.substring(liContent.indexOf('</a>') + 4);
@@ -195,7 +196,7 @@ export function extractDisambiguationLinks(html: string): DisambiguationLink[] {
 			description = description.substring(0, 197) + '...';
 		}
 
-		const title = decodeURIComponent(href.replace('/wiki/', '')).replace(/_/g, ' ');
+		const title = decodeURIComponent(href.replace(WIKI_PREFIX, '')).replace(/_/g, ' ');
 
 		// Avoid duplicates
 		if (links.some((link) => link.title === title)) continue;
