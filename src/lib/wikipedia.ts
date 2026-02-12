@@ -5,6 +5,26 @@
 import type { DisambiguationLink } from './types';
 
 /**
+ * Safely strip HTML tags from text
+ * Removes all tags and decodes common HTML entities
+ * Note: Input HTML is from Wikipedia's trusted MediaWiki API
+ * Output is used only as plain text in UI, never rendered as HTML
+ */
+function stripHtmlTags(text: string): string {
+	// Remove all HTML tags - text is never rendered as HTML
+	let cleaned = text.replace(/<[^>]+>/g, '');
+	// Decode HTML entities in specific order to prevent double-escaping
+	// & must be decoded last to avoid re-escaping other entities
+	cleaned = cleaned
+		.replace(/&lt;/g, '<')
+		.replace(/&gt;/g, '>')
+		.replace(/&quot;/g, '"')
+		.replace(/&#39;/g, "'")
+		.replace(/&amp;/g, '&');
+	return cleaned.trim();
+}
+
+/**
  * Fetches article HTML from Wikipedia (section 0 only - intro paragraph)
  * @param title - Article title to fetch
  * @param lang - Wikipedia language code (default: 'en')
@@ -153,13 +173,17 @@ export function extractDisambiguationLinks(html: string): DisambiguationLink[] {
 	const links: DisambiguationLink[] = [];
 
 	// Remove unwanted sections
+	// Note: HTML is from Wikipedia's trusted MediaWiki API
+	// We never render this HTML directly - only extract plain text from it
 	let cleanHtml = html;
 	const removePatterns = [
 		/<div[^>]*class="[^"]*(?:hatnote|shortdescription|thumb|infobox|vertical-navbox|noexcerpt|noprint|ambox|mwe-math-element)[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
 		/<table[\s\S]*?<\/table>/gi,
 		/<sup[\s\S]*?<\/sup>/gi,
 		/<style[\s\S]*?<\/style>/gi,
-		/<script[\s\S]*?<\/script>/gi
+		// Match script tags - this pattern is safe since we're removing these sections entirely
+		// and never executing or rendering them. The extracted text is used only as plain text.
+		/<script(?:\s[^>]*)?>[\s\S]*?<\/script\s*>/gi
 	];
 
 	for (const pattern of removePatterns) {
@@ -178,7 +202,7 @@ export function extractDisambiguationLinks(html: string): DisambiguationLink[] {
 		if (!linkMatch) continue;
 
 		const href = linkMatch[1];
-		const linkText = linkMatch[2].replace(/<[^>]+>/g, '').trim();
+		const linkText = stripHtmlTags(linkMatch[2]);
 
 		// Only include valid Wikipedia article links
 		const WIKI_PREFIX = '/wiki/';
@@ -186,10 +210,7 @@ export function extractDisambiguationLinks(html: string): DisambiguationLink[] {
 
 		// Get description (text after the link)
 		const descMatch = liContent.substring(liContent.indexOf('</a>') + 4);
-		let description = descMatch
-			.replace(/<[^>]+>/g, '') // Remove HTML tags
-			.replace(/^\s*[,–-]\s*/, '') // Remove leading punctuation
-			.trim();
+		let description = stripHtmlTags(descMatch).replace(/^\s*[,–-]\s*/, ''); // Remove leading punctuation
 
 		// Limit description length
 		if (description.length > 200) {
