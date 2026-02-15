@@ -49,3 +49,9 @@ export const SCROLL_DELAY = 150;
  * Scroll delay when journey finishes (ms)
  */
 export const FINISH_SCROLL_DELAY = 200;
+
+/**
+ * Highest section index to scan when section 0 has no valid link.
+ * Scanner checks sections 1..N before full-page fallback.
+ */
+export const LINK_FALLBACK_SECTION_MAX = 2;

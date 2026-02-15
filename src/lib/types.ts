@@ -21,6 +21,7 @@ export type Article = {
 	extract: string;
 	thumbnail: string | null;
 	url: string;
+	isDisambiguation?: boolean;
 };
 
 /**
@@ -48,6 +49,17 @@ export type PreviewResponse = {
 	title: string;
 	extract: string;
 	thumbnail: string | null;
+	type: string;
+	isDisambiguation: boolean;
+};
+
+/**
+ * Disambiguation option extracted from disambiguation pages
+ */
+export type DisambiguationOption = {
+	title: string;
+	description: string;
+	url: string;
 };
 
 /**
@@ -86,6 +98,7 @@ export type StepRequest = {
 export type WikipediaSummary = {
 	title: string;
 	extract: string;
+	type: string;
 	thumbnail?: { source: string };
 };
 

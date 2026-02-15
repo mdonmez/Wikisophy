@@ -6,18 +6,26 @@
  * Fetches article HTML from Wikipedia (section 0 only - intro paragraph)
  * @param title - Article title to fetch
  * @param lang - Wikipedia language code (default: 'en')
+ * @param section - Section number, or null to fetch full page (default: '0')
  * @returns HTML string or null if fetch fails
  */
-export async function fetchArticleHtml(title: string, lang: string = 'en'): Promise<string | null> {
+export async function fetchArticleHtml(
+	title: string,
+	lang: string = 'en',
+	section: string | null = '0'
+): Promise<string | null> {
 	const params = new URLSearchParams({
 		action: 'parse',
 		page: title,
 		format: 'json',
 		prop: 'text',
-		section: '0', // Only intro section for performance
 		redirects: '1',
 		origin: '*'
 	});
+
+	if (section !== null) {
+		params.set('section', section);
+	}
 
 	try {
 		const response = await fetch(`https://${lang}.wikipedia.org/w/api.php?${params}`);
@@ -30,6 +38,93 @@ export async function fetchArticleHtml(title: string, lang: string = 'en'): Prom
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Extracts disambiguation options from a disambiguation page HTML
+ * @param html - Full article HTML for a disambiguation page
+ * @param limit - Maximum number of options to return (Infinity by default)
+ * @returns Candidate article options
+ */
+export function extractDisambiguationOptions(
+	html: string,
+	limit: number = Number.POSITIVE_INFINITY
+) {
+	if (!html) return [];
+
+	let cleanHtml = html;
+
+	const removePatterns = [
+		/<table[\s\S]*?<\/table>/gi,
+		/<sup[\s\S]*?<\/sup>/gi,
+		/<style[\s\S]*?<\/style>/gi,
+		/<script[\s\S]*?<\/script>/gi,
+		/<div[^>]*class="[^"]*(?:hatnote|shortdescription|thumb|infobox|vertical-navbox|noexcerpt|noprint|ambox|mwe-math-element|toc|metadata)[^"]*"[^>]*>[\s\S]*?<\/div>/gi
+	];
+
+	for (const pattern of removePatterns) {
+		cleanHtml = cleanHtml.replace(pattern, '');
+	}
+
+	const options: Array<{ title: string; description: string; url: string }> = [];
+	const seenTitles = new Set<string>();
+	const liPattern = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+	let liMatch;
+
+	while ((liMatch = liPattern.exec(cleanHtml)) !== null && options.length < limit) {
+		const liContent = liMatch[1];
+		const anchorPattern = /<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+		let anchorMatch;
+		let selectedHref: string | null = null;
+		let selectedText: string | null = null;
+
+		while ((anchorMatch = anchorPattern.exec(liContent)) !== null) {
+			const href = anchorMatch[1].split('#')[0];
+			if (!href.startsWith('/wiki/') || href.substring(6).includes(':')) {
+				continue;
+			}
+
+			selectedHref = href;
+			selectedText = anchorMatch[2].replace(/<[^>]+>/g, '').trim();
+			break;
+		}
+
+		if (!selectedHref) {
+			continue;
+		}
+
+		const title = decodeURIComponent(selectedHref.replace('/wiki/', '')).replace(/_/g, ' ').trim();
+		if (!title || seenTitles.has(title.toLowerCase())) {
+			continue;
+		}
+
+		const plainText = liContent
+			.replace(/<[^>]+>/g, ' ')
+			.replace(/\[[^\]]+\]/g, ' ')
+			.replace(/\s+/g, ' ')
+			.trim();
+
+		let description = plainText;
+		if (selectedText) {
+			description = description.replace(
+				new RegExp(`^${escapeRegExp(selectedText)}\\s*[,:–-]?\\s*`, 'i'),
+				''
+			);
+		}
+
+		options.push({
+			title,
+			description,
+			url: `https://en.wikipedia.org${selectedHref}`
+		});
+		seenTitles.add(title.toLowerCase());
+	}
+
+	return options;
+}
+
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**

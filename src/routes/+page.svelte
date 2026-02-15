@@ -8,11 +8,12 @@
 	import { Button, buttonVariants } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Command from '$lib/components/ui/command/index.js';
+	import * as Collapsible from '$lib/components/ui/collapsible/index.js';
 	import * as Item from '$lib/components/ui/item/index.js';
 	import { PHILOSOPHY_QUOTES } from '$lib/quotes';
 	import { fly } from 'svelte/transition';
 	import { cubicInOut } from 'svelte/easing';
-	import type { Article, SearchResult, JourneyState } from '$lib/types';
+	import type { Article, SearchResult, JourneyState, DisambiguationOption } from '$lib/types';
 	import {
 		MAX_STEPS,
 		SEARCH_DEBOUNCE,
@@ -25,10 +26,12 @@
 		searchArticles,
 		fetchPreview,
 		fetchRandomArticle,
-		findNextStep
+		findNextStep,
+		fetchDisambiguationOptions
 	} from '$lib/wikipedia-client';
 	import { base } from '$app/paths';
 	import * as Popover from '$lib/components/ui/popover/index.js';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
 
 	// State
 	let journeyState = $state<JourneyState>({
@@ -45,6 +48,12 @@
 	let visited = new Set<string>();
 	let isLoadingInitial = $state(false);
 	let isNearBottom = $state(true);
+	let isNerdStatsOpen = $state(false);
+	let disambiguationOpen = $state(false);
+	let disambiguationSourceTitle = $state('');
+	let disambiguationOptions = $state<DisambiguationOption[]>([]);
+	let disambiguationResolver: ((title: string | null) => void) | null = null;
+	let wasDisambiguationOpen = false;
 
 	// Derived states
 	let cycleIndexes = $derived.by(() => {
@@ -79,6 +88,70 @@
 	});
 
 	let isJourneyActive = $derived(journeyState.status === 'RUNNING' || isLoadingInitial);
+
+	let nerdStats = $derived.by(() => {
+		const path = journeyState.path;
+		const normalizedTitles = path.map((article) => article.title.toLowerCase());
+		const uniqueTitles = new Set(normalizedTitles);
+		const disambiguationIndexes = path
+			.map((article, index) => (article.isDisambiguation ? index : -1))
+			.filter((index) => index >= 0);
+
+		const extractSizes = path
+			.map((article) => article.extract.trim().length)
+			.filter((extractLength) => extractLength > 0);
+
+		const totalExtractChars = extractSizes.reduce((sum, extractLength) => sum + extractLength, 0);
+		const totalTitleChars = path.reduce((sum, article) => sum + article.title.length, 0);
+		const distinctHostnames = new Set(
+			path
+				.map((article) => {
+					try {
+						return new URL(article.url).hostname;
+					} catch {
+						return 'invalid-url';
+					}
+				})
+				.filter(Boolean)
+		);
+
+		const cycleAnchorIndex =
+			journeyState.outcome === 'cycle' && path.length > 0
+				? normalizedTitles.findIndex(
+					(title, index) => index < path.length - 1 && title === normalizedTitles[path.length - 1]
+				)
+				: -1;
+
+		const cyclePeriod = cycleAnchorIndex >= 0 ? path.length - cycleAnchorIndex - 1 : 0;
+		const journeyFingerprint = computeJourneyFingerprint(normalizedTitles);
+		const firstTitle = path[0]?.title ?? '∅';
+		const terminalTitle = path[path.length - 1]?.title ?? '∅';
+
+		return {
+			status: journeyState.status,
+			outcome: journeyState.outcome ?? 'none',
+			firstTitle,
+			terminalTitle,
+			nodeCount: path.length,
+			edgeCount: Math.max(path.length - 1, 0),
+			uniqueNodeCount: uniqueTitles.size,
+			revisitCount: Math.max(path.length - uniqueTitles.size, 0),
+			disambiguationCount: disambiguationIndexes.length,
+			disambiguationIndexes,
+			stepBudgetUtilization:
+				MAX_STEPS > 0 ? Number(((path.length / MAX_STEPS) * 100).toFixed(2)) : 0,
+			avgExtractChars:
+				extractSizes.length > 0 ? Math.round(totalExtractChars / extractSizes.length) : 0,
+			maxExtractChars: extractSizes.length > 0 ? Math.max(...extractSizes) : 0,
+			avgTitleChars: path.length > 0 ? Number((totalTitleChars / path.length).toFixed(2)) : 0,
+			distinctHostnames: Array.from(distinctHostnames),
+			cycleAnchorIndex,
+			cyclePeriod,
+			journeyFingerprint,
+			hasNamespaceLeak: path.some((article) => !article.url.includes('/wiki/')),
+			canonicalPath: path.map((article) => article.title)
+		};
+	});
 
 	// Memoization cache for avatar URLs and sentences
 	const avatarCache = new Map<string, string>();
@@ -135,6 +208,13 @@
 	});
 
 	// Track whether user is near the bottom (ChatGPT-like behavior)
+	$effect(() => {
+		if (wasDisambiguationOpen && !disambiguationOpen && disambiguationResolver) {
+			cancelDisambiguationSelection();
+		}
+		wasDisambiguationOpen = disambiguationOpen;
+	});
+
 	$effect(() => {
 		const updateNearBottom = () => {
 			const scrollingElement = document.scrollingElement ?? document.documentElement;
@@ -218,7 +298,8 @@
 				title: previewData.title,
 				extract: previewData.extract ?? '',
 				thumbnail: previewData.thumbnail ?? null,
-				url: `https://en.wikipedia.org/wiki/${encodeURIComponent(previewData.title)}`
+				url: `https://en.wikipedia.org/wiki/${encodeURIComponent(previewData.title)}`,
+				isDisambiguation: previewData.isDisambiguation
 			};
 
 			journeyState = {
@@ -233,8 +314,49 @@
 			isLoadingInitial = false;
 			isNearBottom = true;
 
-			// Start the loop
-			let currentTitle = initialTitle;
+			// Resolve possible disambiguation chain for the starting point
+			let currentPreview = previewData;
+			let currentTitle = currentPreview.title;
+
+			while (currentPreview.isDisambiguation) {
+				const options = await fetchDisambiguationOptions(currentPreview.title);
+
+				if (options.length === 0) {
+					journeyState = {
+						...journeyState,
+						status: 'FINISHED',
+						outcome: 'dead_end'
+					};
+					return;
+				}
+
+				const selectedTitle = await promptDisambiguationSelection(currentPreview.title, options);
+				if (!selectedTitle) {
+					return;
+				}
+
+				const selectedPreview = await fetchPreview(selectedTitle);
+				if (!selectedPreview) {
+					journeyState = {
+						...journeyState,
+						status: 'FINISHED',
+						outcome: 'error'
+					};
+					return;
+				}
+
+				const selectedArticle: Article = {
+					title: selectedPreview.title,
+					extract: selectedPreview.extract ?? '',
+					thumbnail: selectedPreview.thumbnail ?? null,
+					url: `https://en.wikipedia.org/wiki/${encodeURIComponent(selectedPreview.title)}`,
+					isDisambiguation: selectedPreview.isDisambiguation
+				};
+
+				journeyState.path.push(selectedArticle);
+				currentPreview = selectedPreview;
+				currentTitle = selectedPreview.title;
+			}
 
 			for (let step = 0; step < MAX_STEPS; step++) {
 				// Check abort
@@ -287,7 +409,8 @@
 						title: stepData.nextPreview.title,
 						extract: stepData.nextPreview.extract ?? '',
 						thumbnail: stepData.nextPreview.thumbnail ?? null,
-						url: `https://en.wikipedia.org${stepData.nextLink}`
+						url: `https://en.wikipedia.org${stepData.nextLink}`,
+						isDisambiguation: stepData.nextPreview.isDisambiguation
 					};
 
 					journeyState.path.push(nextArticle);
@@ -328,6 +451,7 @@
 		if (abortController) {
 			abortController.abort();
 		}
+		resolveDisambiguationSelection(null);
 		journeyState = {
 			...journeyState,
 			status: 'FINISHED',
@@ -342,8 +466,10 @@
 			path: [],
 			outcome: null
 		};
+		isNerdStatsOpen = false;
 		visited.clear();
 		abortController = null;
+		closeDisambiguationDialog();
 		isLoadingInitial = false;
 		isNearBottom = true;
 	}
@@ -351,6 +477,74 @@
 	function scrollToBottom(): void {
 		const scrollingElement = document.scrollingElement ?? document.documentElement;
 		window.scrollTo({ top: scrollingElement.scrollHeight, behavior: 'smooth' });
+	}
+
+	function computeJourneyFingerprint(normalizedTitles: string[]): string {
+		let rollingHash = 2166136261;
+
+		for (const normalizedTitle of normalizedTitles) {
+			for (let charIndex = 0; charIndex < normalizedTitle.length; charIndex++) {
+				rollingHash ^= normalizedTitle.charCodeAt(charIndex);
+				rollingHash = Math.imul(rollingHash, 16777619);
+			}
+			rollingHash ^= 124;
+			rollingHash = Math.imul(rollingHash, 16777619);
+		}
+
+		return `0x${(rollingHash >>> 0).toString(16).padStart(8, '0')}`;
+	}
+
+	function getBadgeLabel(article: Article, index: number): string | number {
+		if (article.isDisambiguation) {
+			return 'D';
+		}
+
+		let latestDisambiguationIndex = -1;
+		for (let cursor = index; cursor >= 0; cursor--) {
+			if (journeyState.path[cursor]?.isDisambiguation) {
+				latestDisambiguationIndex = cursor;
+				break;
+			}
+		}
+
+		return index - latestDisambiguationIndex;
+	}
+
+	function promptDisambiguationSelection(
+		sourceTitle: string,
+		options: DisambiguationOption[]
+	): Promise<string | null> {
+		disambiguationSourceTitle = sourceTitle;
+		disambiguationOptions = options;
+		disambiguationOpen = true;
+
+		return new Promise((resolve) => {
+			disambiguationResolver = resolve;
+		});
+	}
+
+	function resolveDisambiguationSelection(title: string | null): void {
+		const resolver = disambiguationResolver;
+		disambiguationResolver = null;
+		closeDisambiguationDialog();
+		resolver?.(title);
+	}
+
+	function cancelDisambiguationSelection(): void {
+		if (!disambiguationResolver) {
+			closeDisambiguationDialog();
+			return;
+		}
+
+		abortController?.abort();
+		resolveDisambiguationSelection(null);
+		resetJourney();
+	}
+
+	function closeDisambiguationDialog(): void {
+		disambiguationOpen = false;
+		disambiguationSourceTitle = '';
+		disambiguationOptions = [];
 	}
 </script>
 
@@ -543,7 +737,7 @@
 									<a href={article.url} target="_blank" rel="noopener noreferrer" {...props}>
 										<div class="flex items-center gap-3">
 											<Badge class="h-5 w-7 rounded-sm px-1 font-mono tabular-nums">
-												{index + 1}
+												{getBadgeLabel(article, index)}
 											</Badge>
 										</div>
 										<Item.Media variant="image">
@@ -568,7 +762,11 @@
 										</Item.Media>
 										<Item.Content>
 											<Item.Title>{article.title}</Item.Title>
-											<Item.Description>{getFirstSentence(article.extract)}</Item.Description>
+											<Item.Description
+												>{article.isDisambiguation
+													? 'Disambugation Page'
+													: getFirstSentence(article.extract)}</Item.Description
+											>
 										</Item.Content>
 									</a>
 								{/snippet}
@@ -615,6 +813,94 @@
 					{/if}
 				{/if}
 
+				<!-- Stats for nerds (Finished Journeys) -->
+				{#if journeyState.status === 'FINISHED' && journeyState.outcome}
+					<div class="mx-auto mt-8 max-w-3xl">
+						<Collapsible.Root bind:open={isNerdStatsOpen}>
+							<div class="rounded-md border">
+								<Collapsible.Trigger
+									class="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/50"
+								>
+									<div class="space-y-0.5">
+										<div class="font-semibold">Stats for nerds</div>
+										<div class="text-xs text-muted-foreground">
+											Traversal telemetry, graph diagnostics, and parser-level metadata
+										</div>
+									</div>
+									<ChevronDownIcon
+										class={`h-4 w-4 transition-transform ${isNerdStatsOpen ? 'rotate-180' : ''}`}
+									/>
+								</Collapsible.Trigger>
+								<Collapsible.Content class="border-t px-4 py-3">
+									<div class="grid gap-3 text-sm sm:grid-cols-2">
+										<div class="rounded-md border p-3">
+											<div class="text-[11px] text-muted-foreground">TERMINAL_STATE</div>
+											<div class="font-mono">
+												{nerdStats.status} / {nerdStats.outcome}
+											</div>
+										</div>
+										<div class="rounded-md border p-3">
+											<div class="text-[11px] text-muted-foreground">JOURNEY_FINGERPRINT</div>
+											<div class="font-mono">{nerdStats.journeyFingerprint}</div>
+										</div>
+										<div class="rounded-md border p-3">
+											<div class="text-[11px] text-muted-foreground">PATH_CARDINALITY</div>
+											<div class="font-mono">
+												{nerdStats.nodeCount} nodes / {nerdStats.edgeCount} edges
+											</div>
+										</div>
+										<div class="rounded-md border p-3">
+											<div class="text-[11px] text-muted-foreground">STEP_BUDGET_UTILIZATION</div>
+											<div class="font-mono">{nerdStats.stepBudgetUtilization}% of MAX_STEPS</div>
+										</div>
+										<div class="rounded-md border p-3">
+											<div class="text-[11px] text-muted-foreground">UNIQUE_NODE_RATIO</div>
+											<div class="font-mono">
+												{nerdStats.uniqueNodeCount}/{nerdStats.nodeCount} unique; {nerdStats.revisitCount}{' '}
+												revisits
+											</div>
+										</div>
+										<div class="rounded-md border p-3">
+											<div class="text-[11px] text-muted-foreground">DISAMBIGUATION_NODES</div>
+											<div class="font-mono">
+												{nerdStats.disambiguationCount} @ [{nerdStats.disambiguationIndexes.join(', ') || '∅'}]
+											</div>
+										</div>
+										<div class="rounded-md border p-3">
+											<div class="text-[11px] text-muted-foreground">CYCLE_METRICS</div>
+											<div class="font-mono">
+												anchor={nerdStats.cycleAnchorIndex}; period={nerdStats.cyclePeriod}
+											</div>
+										</div>
+										<div class="rounded-md border p-3">
+											<div class="text-[11px] text-muted-foreground">TEXTUAL_DENSITY</div>
+											<div class="font-mono">
+												μ extract={nerdStats.avgExtractChars} chars; max extract={nerdStats.maxExtractChars}{' '}
+												chars; μ title={nerdStats.avgTitleChars} chars
+											</div>
+										</div>
+									</div>
+
+									<div class="mt-3 space-y-1.5 text-xs text-muted-foreground">
+										<div class="font-mono">
+											ENTRYPOINT: {nerdStats.firstTitle} → TERMINAL: {nerdStats.terminalTitle}
+										</div>
+										<div class="font-mono">
+											HOST_SET: [{nerdStats.distinctHostnames.join(', ') || '∅'}]
+										</div>
+										<div class="font-mono">
+											NAMESPACE_LEAKAGE: {nerdStats.hasNamespaceLeak ? 'detected' : 'none'}
+										</div>
+										<div class="font-mono break-all">
+											CANONICAL_PATH: {nerdStats.canonicalPath.join(' → ')}
+										</div>
+									</div>
+								</Collapsible.Content>
+							</div>
+						</Collapsible.Root>
+					</div>
+				{/if}
+
 				<!-- New Journey Button -->
 				{#if journeyState.status === 'FINISHED' && journeyState.outcome}
 					<div class="mx-auto mt-12 max-w-3xl text-center">
@@ -642,4 +928,32 @@
 			</Button>
 		</div>
 	{/if}
+
+	<Dialog.Root bind:open={disambiguationOpen}>
+		<Dialog.Content showCloseButton={false} class="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
+			<div class="flex items-start justify-between gap-4">
+				<Dialog.Header class="text-left">
+					<Dialog.Title>Choose a topic</Dialog.Title>
+					<Dialog.Description>
+						{disambiguationSourceTitle} is a disambiguation page. Select an article to continue.
+					</Dialog.Description>
+				</Dialog.Header>
+				<Button variant="destructive" class="shrink-0" onclick={cancelDisambiguationSelection}
+					>Cancel journey</Button
+				>
+			</div>
+
+			<div class="mt-2 flex flex-col gap-2">
+				{#each disambiguationOptions as option (option.title)}
+					<Button
+						variant="outline"
+						class="h-auto w-full justify-start px-3 py-2 text-left"
+						onclick={() => resolveDisambiguationSelection(option.title)}
+					>
+						<span class="font-medium">{option.title}</span>
+					</Button>
+				{/each}
+			</div>
+		</Dialog.Content>
+	</Dialog.Root>
 </div>

@@ -3,16 +3,22 @@
  * All functions make direct calls to Wikipedia REST and MediaWiki APIs
  */
 
-import { WIKIPEDIA_API_URL, WIKIPEDIA_REST_API_URL, SEARCH_LIMIT } from './constants';
+import {
+	WIKIPEDIA_API_URL,
+	WIKIPEDIA_REST_API_URL,
+	SEARCH_LIMIT,
+	LINK_FALLBACK_SECTION_MAX
+} from './constants';
 import type {
 	SearchResult,
 	PreviewResponse,
 	StepResponse,
+	DisambiguationOption,
 	WikipediaSummary,
 	WikipediaOpenSearchResult,
 	WikipediaRandomResult
 } from './types';
-import { fetchArticleHtml, findFirstWikiLink } from './wikipedia';
+import { fetchArticleHtml, findFirstWikiLink, extractDisambiguationOptions } from './wikipedia';
 
 /**
  * Fetch article preview (title, extract, thumbnail)
@@ -28,14 +34,30 @@ export async function fetchPreview(title: string): Promise<PreviewResponse | nul
 		}
 
 		const data: WikipediaSummary = await res.json();
+		const isDisambiguation = data.type === 'disambiguation';
+
 		return {
 			title: data.title,
 			extract: data.extract,
-			thumbnail: data.thumbnail?.source ?? null
+			thumbnail: data.thumbnail?.source ?? null,
+			type: data.type,
+			isDisambiguation
 		};
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Fetch disambiguation options by parsing full article HTML
+ */
+export async function fetchDisambiguationOptions(title: string): Promise<DisambiguationOption[]> {
+	const html = await fetchArticleHtml(title, 'en', null);
+	if (!html) {
+		return [];
+	}
+
+	return extractDisambiguationOptions(html);
 }
 
 /**
@@ -108,17 +130,7 @@ export async function fetchRandomArticle(): Promise<string | null> {
  * Find next article in the chain
  */
 export async function findNextStep(title: string): Promise<StepResponse> {
-	const html = await fetchArticleHtml(title);
-
-	if (!html) {
-		return {
-			title,
-			nextLink: null,
-			nextPreview: null
-		};
-	}
-
-	const nextLink = findFirstWikiLink(html);
+	const nextLink = await resolveNextLinkWithFallback(title);
 
 	if (!nextLink) {
 		return {
@@ -136,4 +148,33 @@ export async function findNextStep(title: string): Promise<StepResponse> {
 		nextLink,
 		nextPreview
 	};
+}
+
+async function resolveNextLinkWithFallback(title: string): Promise<string | null> {
+	const introHtml = await fetchArticleHtml(title, 'en', '0');
+	if (introHtml) {
+		const introLink = findFirstWikiLink(introHtml);
+		if (introLink) {
+			return introLink;
+		}
+	}
+
+	for (let section = 1; section <= LINK_FALLBACK_SECTION_MAX; section++) {
+		const sectionHtml = await fetchArticleHtml(title, 'en', section.toString());
+		if (!sectionHtml) {
+			continue;
+		}
+
+		const sectionLink = findFirstWikiLink(sectionHtml);
+		if (sectionLink) {
+			return sectionLink;
+		}
+	}
+
+	const fullPageHtml = await fetchArticleHtml(title, 'en', null);
+	if (!fullPageHtml) {
+		return null;
+	}
+
+	return findFirstWikiLink(fullPageHtml);
 }
