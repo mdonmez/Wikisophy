@@ -8,7 +8,6 @@
 	import { Button, buttonVariants } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Command from '$lib/components/ui/command/index.js';
-	import * as Collapsible from '$lib/components/ui/collapsible/index.js';
 	import * as Item from '$lib/components/ui/item/index.js';
 	import { PHILOSOPHY_QUOTES } from '$lib/quotes';
 	import { fly } from 'svelte/transition';
@@ -48,7 +47,6 @@
 	let visited = new Set<string>();
 	let isLoadingInitial = $state(false);
 	let isNearBottom = $state(true);
-	let isNerdStatsOpen = $state(false);
 	let disambiguationOpen = $state(false);
 	let disambiguationSourceTitle = $state('');
 	let disambiguationOptions = $state<DisambiguationOption[]>([]);
@@ -88,70 +86,6 @@
 	});
 
 	let isJourneyActive = $derived(journeyState.status === 'RUNNING' || isLoadingInitial);
-
-	let nerdStats = $derived.by(() => {
-		const path = journeyState.path;
-		const normalizedTitles = path.map((article) => article.title.toLowerCase());
-		const uniqueTitles = new Set(normalizedTitles);
-		const disambiguationIndexes = path
-			.map((article, index) => (article.isDisambiguation ? index : -1))
-			.filter((index) => index >= 0);
-
-		const extractSizes = path
-			.map((article) => article.extract.trim().length)
-			.filter((extractLength) => extractLength > 0);
-
-		const totalExtractChars = extractSizes.reduce((sum, extractLength) => sum + extractLength, 0);
-		const totalTitleChars = path.reduce((sum, article) => sum + article.title.length, 0);
-		const distinctHostnames = new Set(
-			path
-				.map((article) => {
-					try {
-						return new URL(article.url).hostname;
-					} catch {
-						return 'invalid-url';
-					}
-				})
-				.filter(Boolean)
-		);
-
-		const cycleAnchorIndex =
-			journeyState.outcome === 'cycle' && path.length > 0
-				? normalizedTitles.findIndex(
-					(title, index) => index < path.length - 1 && title === normalizedTitles[path.length - 1]
-				)
-				: -1;
-
-		const cyclePeriod = cycleAnchorIndex >= 0 ? path.length - cycleAnchorIndex - 1 : 0;
-		const journeyFingerprint = computeJourneyFingerprint(normalizedTitles);
-		const firstTitle = path[0]?.title ?? '∅';
-		const terminalTitle = path[path.length - 1]?.title ?? '∅';
-
-		return {
-			status: journeyState.status,
-			outcome: journeyState.outcome ?? 'none',
-			firstTitle,
-			terminalTitle,
-			nodeCount: path.length,
-			edgeCount: Math.max(path.length - 1, 0),
-			uniqueNodeCount: uniqueTitles.size,
-			revisitCount: Math.max(path.length - uniqueTitles.size, 0),
-			disambiguationCount: disambiguationIndexes.length,
-			disambiguationIndexes,
-			stepBudgetUtilization:
-				MAX_STEPS > 0 ? Number(((path.length / MAX_STEPS) * 100).toFixed(2)) : 0,
-			avgExtractChars:
-				extractSizes.length > 0 ? Math.round(totalExtractChars / extractSizes.length) : 0,
-			maxExtractChars: extractSizes.length > 0 ? Math.max(...extractSizes) : 0,
-			avgTitleChars: path.length > 0 ? Number((totalTitleChars / path.length).toFixed(2)) : 0,
-			distinctHostnames: Array.from(distinctHostnames),
-			cycleAnchorIndex,
-			cyclePeriod,
-			journeyFingerprint,
-			hasNamespaceLeak: path.some((article) => !article.url.includes('/wiki/')),
-			canonicalPath: path.map((article) => article.title)
-		};
-	});
 
 	// Memoization cache for avatar URLs and sentences
 	const avatarCache = new Map<string, string>();
@@ -466,7 +400,6 @@
 			path: [],
 			outcome: null
 		};
-		isNerdStatsOpen = false;
 		visited.clear();
 		abortController = null;
 		closeDisambiguationDialog();
@@ -477,21 +410,6 @@
 	function scrollToBottom(): void {
 		const scrollingElement = document.scrollingElement ?? document.documentElement;
 		window.scrollTo({ top: scrollingElement.scrollHeight, behavior: 'smooth' });
-	}
-
-	function computeJourneyFingerprint(normalizedTitles: string[]): string {
-		let rollingHash = 2166136261;
-
-		for (const normalizedTitle of normalizedTitles) {
-			for (let charIndex = 0; charIndex < normalizedTitle.length; charIndex++) {
-				rollingHash ^= normalizedTitle.charCodeAt(charIndex);
-				rollingHash = Math.imul(rollingHash, 16777619);
-			}
-			rollingHash ^= 124;
-			rollingHash = Math.imul(rollingHash, 16777619);
-		}
-
-		return `0x${(rollingHash >>> 0).toString(16).padStart(8, '0')}`;
 	}
 
 	function getBadgeLabel(article: Article, index: number): string | number {
@@ -811,94 +729,6 @@
 							</blockquote>
 						</div>
 					{/if}
-				{/if}
-
-				<!-- Stats for nerds (Finished Journeys) -->
-				{#if journeyState.status === 'FINISHED' && journeyState.outcome}
-					<div class="mx-auto mt-8 max-w-3xl">
-						<Collapsible.Root bind:open={isNerdStatsOpen}>
-							<div class="rounded-md border">
-								<Collapsible.Trigger
-									class="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/50"
-								>
-									<div class="space-y-0.5">
-										<div class="font-semibold">Stats for nerds</div>
-										<div class="text-xs text-muted-foreground">
-											Traversal telemetry, graph diagnostics, and parser-level metadata
-										</div>
-									</div>
-									<ChevronDownIcon
-										class={`h-4 w-4 transition-transform ${isNerdStatsOpen ? 'rotate-180' : ''}`}
-									/>
-								</Collapsible.Trigger>
-								<Collapsible.Content class="border-t px-4 py-3">
-									<div class="grid gap-3 text-sm sm:grid-cols-2">
-										<div class="rounded-md border p-3">
-											<div class="text-[11px] text-muted-foreground">TERMINAL_STATE</div>
-											<div class="font-mono">
-												{nerdStats.status} / {nerdStats.outcome}
-											</div>
-										</div>
-										<div class="rounded-md border p-3">
-											<div class="text-[11px] text-muted-foreground">JOURNEY_FINGERPRINT</div>
-											<div class="font-mono">{nerdStats.journeyFingerprint}</div>
-										</div>
-										<div class="rounded-md border p-3">
-											<div class="text-[11px] text-muted-foreground">PATH_CARDINALITY</div>
-											<div class="font-mono">
-												{nerdStats.nodeCount} nodes / {nerdStats.edgeCount} edges
-											</div>
-										</div>
-										<div class="rounded-md border p-3">
-											<div class="text-[11px] text-muted-foreground">STEP_BUDGET_UTILIZATION</div>
-											<div class="font-mono">{nerdStats.stepBudgetUtilization}% of MAX_STEPS</div>
-										</div>
-										<div class="rounded-md border p-3">
-											<div class="text-[11px] text-muted-foreground">UNIQUE_NODE_RATIO</div>
-											<div class="font-mono">
-												{nerdStats.uniqueNodeCount}/{nerdStats.nodeCount} unique; {nerdStats.revisitCount}{' '}
-												revisits
-											</div>
-										</div>
-										<div class="rounded-md border p-3">
-											<div class="text-[11px] text-muted-foreground">DISAMBIGUATION_NODES</div>
-											<div class="font-mono">
-												{nerdStats.disambiguationCount} @ [{nerdStats.disambiguationIndexes.join(', ') || '∅'}]
-											</div>
-										</div>
-										<div class="rounded-md border p-3">
-											<div class="text-[11px] text-muted-foreground">CYCLE_METRICS</div>
-											<div class="font-mono">
-												anchor={nerdStats.cycleAnchorIndex}; period={nerdStats.cyclePeriod}
-											</div>
-										</div>
-										<div class="rounded-md border p-3">
-											<div class="text-[11px] text-muted-foreground">TEXTUAL_DENSITY</div>
-											<div class="font-mono">
-												μ extract={nerdStats.avgExtractChars} chars; max extract={nerdStats.maxExtractChars}{' '}
-												chars; μ title={nerdStats.avgTitleChars} chars
-											</div>
-										</div>
-									</div>
-
-									<div class="mt-3 space-y-1.5 text-xs text-muted-foreground">
-										<div class="font-mono">
-											ENTRYPOINT: {nerdStats.firstTitle} → TERMINAL: {nerdStats.terminalTitle}
-										</div>
-										<div class="font-mono">
-											HOST_SET: [{nerdStats.distinctHostnames.join(', ') || '∅'}]
-										</div>
-										<div class="font-mono">
-											NAMESPACE_LEAKAGE: {nerdStats.hasNamespaceLeak ? 'detected' : 'none'}
-										</div>
-										<div class="font-mono break-all">
-											CANONICAL_PATH: {nerdStats.canonicalPath.join(' → ')}
-										</div>
-									</div>
-								</Collapsible.Content>
-							</div>
-						</Collapsible.Root>
-					</div>
 				{/if}
 
 				<!-- New Journey Button -->
