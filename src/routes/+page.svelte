@@ -63,8 +63,12 @@
 
 	let outcomeMessage = $derived(() => {
 		switch (journeyState.outcome) {
-			case 'success':
-				return `Philosophy was reached in ${journeyState.path.length} steps.`;
+			case 'success': {
+				const nonDisambiguationCount = journeyState.path.filter(
+					(article) => !article.isDisambiguation
+				).length;
+				return `Philosophy was reached in ${nonDisambiguationCount} steps.`;
+			}
 			case 'cycle':
 				return "A loop was detected. You're going in circles!";
 			case 'dead_end':
@@ -96,7 +100,7 @@
 		if (!text) return '';
 		if (sentenceCache.has(text)) return sentenceCache.get(text)!;
 		const match = text.match(/^[^.!?]+[.!?]/);
-		const result = match ? match[0] : text.slice(0, 100) + '...';
+		const result = match ? match[0] : text.slice(0, 100) + '…';
 		sentenceCache.set(text, result);
 		return result;
 	}
@@ -626,7 +630,9 @@
 										<div class="flex flex-col gap-1">
 											<div class="font-medium">{result.title}</div>
 											{#if result.description}
-												<div class="text-xs text-muted-foreground">{result.description}</div>
+												<div class="line-clamp-1 text-xs text-muted-foreground">
+													{result.description}
+												</div>
 											{/if}
 										</div>
 									</Command.Item>
@@ -680,7 +686,7 @@
 										</Item.Media>
 										<Item.Content>
 											<Item.Title>{article.title}</Item.Title>
-											<Item.Description
+											<Item.Description class="line-clamp-1"
 												>{article.isDisambiguation
 													? 'Disambugation Page'
 													: getFirstSentence(article.extract)}</Item.Description
