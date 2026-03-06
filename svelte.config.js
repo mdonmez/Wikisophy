@@ -8,16 +8,7 @@ const config = {
 	preprocess: vitePreprocess(),
 
 	kit: {
-		// Use static adapter for GitHub Pages
-		adapter: adapter({
-			// Enable fallback for SPA routing
-			fallback: 'index.html',
-			strict: false
-		}),
-		// Set base path for GitHub Pages subdirectory deployment
-		paths: {
-			base: '/wikisophy'
-		}
+		adapter: adapter()
 	}
 };
 
