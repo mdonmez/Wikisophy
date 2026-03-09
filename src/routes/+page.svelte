@@ -12,6 +12,7 @@
 	import { PHILOSOPHY_QUOTES } from '$lib/quotes';
 	import { fly } from 'svelte/transition';
 	import { cubicInOut } from 'svelte/easing';
+	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import type { Article, SearchResult, JourneyState, DisambiguationOption } from '$lib/types';
 	import {
 		MAX_STEPS,
@@ -44,7 +45,7 @@
 	let isSearching = $state(false);
 	let searchTimeout: number = 0;
 	let abortController: AbortController | null = null;
-	let visited = new Set<string>();
+	let visited = new SvelteSet<string>();
 	let isLoadingInitial = $state(false);
 	let isNearBottom = $state(true);
 	let disambiguationOpen = $state(false);
@@ -92,8 +93,8 @@
 	let isJourneyActive = $derived(journeyState.status === 'RUNNING' || isLoadingInitial);
 
 	// Memoization cache for avatar URLs and sentences
-	const avatarCache = new Map<string, string>();
-	const sentenceCache = new Map<string, string>();
+	const avatarCache = new SvelteMap<string, string>();
+	const sentenceCache = new SvelteMap<string, string>();
 
 	// Helper to get first sentence with caching
 	function getFirstSentence(text: string): string {
@@ -354,7 +355,7 @@
 					journeyState.path.push(nextArticle);
 					journeyState.status = 'RUNNING';
 					currentTitle = stepData.nextPreview.title;
-				} catch (err) {
+				} catch {
 					if (!abortController.signal.aborted) {
 						journeyState = {
 							...journeyState,
@@ -620,7 +621,7 @@
 					{#if searchQuery.trim() !== '' && searchResults.length > 0}
 						<Command.List class="border-t">
 							<Command.Group>
-								{#each searchResults as result}
+								{#each searchResults as result (result.title)}
 									<Command.Item
 										value={result.title}
 										onSelect={() => {
