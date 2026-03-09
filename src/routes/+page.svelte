@@ -12,7 +12,7 @@
 	import { PHILOSOPHY_QUOTES } from '$lib/quotes';
 	import { fly } from 'svelte/transition';
 	import { cubicInOut } from 'svelte/easing';
-	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
+	import { SvelteSet } from 'svelte/reactivity';
 	import type { Article, SearchResult, JourneyState, DisambiguationOption } from '$lib/types';
 	import {
 		MAX_STEPS,
@@ -62,7 +62,7 @@
 		return [firstIndex, journeyState.path.length - 1];
 	});
 
-	let outcomeMessage = $derived(() => {
+	let outcomeMessage = $derived.by(() => {
 		switch (journeyState.outcome) {
 			case 'success': {
 				const nonDisambiguationCount = journeyState.path.filter(
@@ -83,7 +83,7 @@
 		}
 	});
 
-	let randomQuote = $derived(() => {
+	let randomQuote = $derived.by(() => {
 		if (journeyState.outcome === 'success') {
 			return PHILOSOPHY_QUOTES[Math.floor(Math.random() * PHILOSOPHY_QUOTES.length)];
 		}
@@ -92,9 +92,9 @@
 
 	let isJourneyActive = $derived(journeyState.status === 'RUNNING' || isLoadingInitial);
 
-	// Memoization cache for avatar URLs and sentences
-	const avatarCache = new SvelteMap<string, string>();
-	const sentenceCache = new SvelteMap<string, string>();
+	// Memoization cache for avatar URLs and sentences (plain Map — not reactive)
+	const avatarCache = new Map<string, string>();
+	const sentenceCache = new Map<string, string>();
 
 	// Helper to get first sentence with caching
 	function getFirstSentence(text: string): string {
@@ -292,7 +292,7 @@
 					isDisambiguation: selectedPreview.isDisambiguation
 				};
 
-				journeyState.path.push(selectedArticle);
+				journeyState = { ...journeyState, path: [...journeyState.path, selectedArticle] };
 				currentPreview = selectedPreview;
 				currentTitle = selectedPreview.title;
 			}
@@ -352,8 +352,11 @@
 						isDisambiguation: stepData.nextPreview.isDisambiguation
 					};
 
-					journeyState.path.push(nextArticle);
-					journeyState.status = 'RUNNING';
+					journeyState = {
+						...journeyState,
+						path: [...journeyState.path, nextArticle],
+						status: 'RUNNING'
+					};
 					currentTitle = stepData.nextPreview.title;
 				} catch {
 					if (!abortController.signal.aborted) {
@@ -721,21 +724,18 @@
 				{#if journeyState.status === 'FINISHED' && journeyState.outcome}
 					<div class="mx-auto mt-12 max-w-3xl text-center">
 						<div class="mb-6 text-lg font-semibold">
-							{outcomeMessage()}
+							{outcomeMessage}
 						</div>
 					</div>
 				{/if}
 
 				<!-- Quote Section (Success Only) -->
-				{#if journeyState.outcome === 'success' && randomQuote()}
-					{@const quote = randomQuote()}
-					{#if quote}
-						<div class="mx-auto mt-12 max-w-3xl">
-							<blockquote class="border-s-2 ps-6 italic">
-								{quote.text} — {quote.author}
-							</blockquote>
-						</div>
-					{/if}
+				{#if journeyState.outcome === 'success' && randomQuote}
+					<div class="mx-auto mt-12 max-w-3xl">
+						<blockquote class="border-s-2 ps-6 italic">
+							{randomQuote.text} — {randomQuote.author}
+						</blockquote>
+					</div>
 				{/if}
 
 				<!-- New Journey Button -->
