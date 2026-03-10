@@ -52,71 +52,59 @@ export function extractDisambiguationOptions(
 ) {
 	if (!html) return [];
 
-	let cleanHtml = html;
-
-	const removePatterns = [
-		/<table[\s\S]*?<\/table>/gi,
-		/<sup[\s\S]*?<\/sup>/gi,
-		/<style[\s\S]*?<\/style>/gi,
-		/<script[\s\S]*?<\/script>/gi,
-		/<div[^>]*class="[^"]*(?:hatnote|shortdescription|thumb|infobox|vertical-navbox|noexcerpt|noprint|ambox|mwe-math-element|toc|metadata)[^"]*"[^>]*>[\s\S]*?<\/div>/gi
+	const doc = new DOMParser().parseFromString(html, 'text/html');
+	const removeSelectors = [
+		'table',
+		'sup',
+		'style',
+		'script',
+		'.hatnote',
+		'.shortdescription',
+		'.thumb',
+		'.infobox',
+		'.vertical-navbox',
+		'.noexcerpt',
+		'.noprint',
+		'.ambox',
+		'.mwe-math-element',
+		'.toc',
+		'.metadata'
 	];
-
-	for (const pattern of removePatterns) {
-		cleanHtml = cleanHtml.replace(pattern, '');
+	for (const selector of removeSelectors) {
+		doc.querySelectorAll(selector).forEach((el) => el.remove());
 	}
 
 	const options: Array<{ title: string; description: string; url: string }> = [];
 	const seenTitles = new Set<string>();
-	const liPattern = /<li[^>]*>([\s\S]*?)<\/li>/gi;
-	let liMatch;
 
-	while ((liMatch = liPattern.exec(cleanHtml)) !== null && options.length < limit) {
-		const liContent = liMatch[1];
-		const anchorPattern = /<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-		let anchorMatch;
-		let selectedHref: string | null = null;
-		let selectedText: string | null = null;
+	for (const li of doc.querySelectorAll('li')) {
+		if (options.length >= limit) break;
 
-		while ((anchorMatch = anchorPattern.exec(liContent)) !== null) {
-			const href = anchorMatch[1].split('#')[0];
-			if (!href.startsWith('/wiki/') || href.substring(6).includes(':')) {
-				continue;
-			}
+		const anchor = Array.from(li.querySelectorAll('a')).find((a) => {
+			const href = a.getAttribute('href') ?? '';
+			return href.startsWith('/wiki/') && !href.substring(6).includes(':');
+		});
+		if (!anchor) continue;
 
-			selectedHref = href;
-			selectedText = anchorMatch[2].replace(/<[^>]+>/g, '').trim();
-			break;
-		}
+		const rawHref = (anchor.getAttribute('href') ?? '').split('#')[0];
+		const title = decodeURIComponent(rawHref.replace('/wiki/', '')).replace(/_/g, ' ').trim();
+		if (!title || seenTitles.has(title.toLowerCase())) continue;
 
-		if (!selectedHref) {
-			continue;
-		}
-
-		const title = decodeURIComponent(selectedHref.replace('/wiki/', '')).replace(/_/g, ' ').trim();
-		if (!title || seenTitles.has(title.toLowerCase())) {
-			continue;
-		}
-
-		const plainText = liContent
-			.replace(/<[^>]+>/g, ' ')
+		const linkText = anchor.textContent?.trim() ?? '';
+		const liText = (li.textContent ?? '')
 			.replace(/\[[^\]]+\]/g, ' ')
 			.replace(/\s+/g, ' ')
 			.trim();
 
-		let description = plainText;
-		if (selectedText) {
+		let description = liText;
+		if (linkText) {
 			description = description.replace(
-				new RegExp(`^${escapeRegExp(selectedText)}\\s*[,:–-]?\\s*`, 'i'),
+				new RegExp(`^${escapeRegExp(linkText)}\\s*[,:–-]?\\s*`, 'i'),
 				''
 			);
 		}
 
-		options.push({
-			title,
-			description,
-			url: `https://en.wikipedia.org${selectedHref}`
-		});
+		options.push({ title, description, url: `https://en.wikipedia.org${rawHref}` });
 		seenTitles.add(title.toLowerCase());
 	}
 
@@ -143,90 +131,80 @@ function escapeRegExp(value: string): string {
 export function findFirstWikiLink(html: string): string | null {
 	if (!html) return null;
 
-	let cleanHtml = html;
-
-	// Remove elements that shouldn't contain valid links
-	const removePatterns = [
-		/<div[^>]*class="[^"]*(?:hatnote|shortdescription|thumb|infobox|vertical-navbox|noexcerpt|noprint|ambox|mwe-math-element)[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
-		/<table[\s\S]*?<\/table>/gi,
-		/<sup[\s\S]*?<\/sup>/gi,
-		/<style[\s\S]*?<\/style>/gi,
-		/<script[\s\S]*?<\/script>/gi,
-		/<audio[\s\S]*?<\/audio>/gi,
-		/<video[\s\S]*?<\/video>/gi,
-		/<figure[\s\S]*?<\/figure>/gi
+	const doc = new DOMParser().parseFromString(html, 'text/html');
+	const removeSelectors = [
+		'.hatnote',
+		'.shortdescription',
+		'.thumb',
+		'.infobox',
+		'.vertical-navbox',
+		'.noexcerpt',
+		'.noprint',
+		'.ambox',
+		'.mwe-math-element',
+		'table',
+		'sup',
+		'style',
+		'script',
+		'audio',
+		'video',
+		'figure'
 	];
-
-	for (const pattern of removePatterns) {
-		cleanHtml = cleanHtml.replace(pattern, '');
+	for (const selector of removeSelectors) {
+		doc.querySelectorAll(selector).forEach((el) => el.remove());
 	}
 
-	// Scan paragraphs
-	const pPattern = /<p[^>]*>([\s\S]*?)<\/p>/gi;
-	let pMatch;
-
-	while ((pMatch = pPattern.exec(cleanHtml)) !== null) {
-		const pContent = pMatch[1];
-
-		// Skip very short paragraphs
-		const textContent = pContent.replace(/<[^>]+>/g, '').trim();
+	for (const p of doc.querySelectorAll('p')) {
+		const textContent = p.textContent?.trim() ?? '';
 		if (textContent.length < 20 && !textContent.includes('is')) continue;
 
-		// Character analysis and link validation
-		let parenCount = 0;
-		let i = 0;
-
-		while (i < pContent.length) {
-			const char = pContent[i];
-
-			if (char === '(') {
-				parenCount++;
-				i++;
-				continue;
-			}
-			if (char === ')') {
-				parenCount--;
-				i++;
-				continue;
-			}
-
-			// Link start: <a href="
-			if (pContent.substring(i, i + 9) === '<a href="') {
-				const hrefStart = i + 9;
-				const hrefEnd = pContent.indexOf('"', hrefStart);
-				if (hrefEnd === -1) {
-					i++;
-					continue;
-				}
-
-				const href = pContent.substring(hrefStart, hrefEnd);
-
-				// Rule: Must start with /wiki/ and not contain :
-				if (!href.startsWith('/wiki/') || href.substring(6).includes(':')) {
-					i = hrefEnd + 1;
-					continue;
-				}
-
-				// Get link content for italic check
-				const contentStart = pContent.indexOf('>', hrefEnd) + 1;
-				const contentEnd = pContent.indexOf('</a>', contentStart);
-				if (contentEnd === -1) {
-					i++;
-					continue;
-				}
-
-				const linkContent = pContent.substring(contentStart, contentEnd);
-
-				// Rule: Not in parentheses AND not italic
-				if (parenCount <= 0 && !linkContent.includes('<i>') && !linkContent.includes('<em>')) {
-					return href.split('#')[0]; // Remove anchor
-				}
-
-				i = contentEnd + 4;
-				continue;
-			}
-			i++;
-		}
+		const link = findFirstValidLinkInParagraph(p);
+		if (link) return link;
 	}
+
 	return null;
+}
+
+function findFirstValidLinkInParagraph(p: Element): string | null {
+	let parenCount = 0;
+
+	function walk(node: Node): string | null {
+		if (node.nodeType === Node.TEXT_NODE) {
+			for (const ch of node.textContent ?? '') {
+				if (ch === '(') parenCount++;
+				else if (ch === ')') parenCount--;
+			}
+			return null;
+		}
+		if (node.nodeType !== Node.ELEMENT_NODE) return null;
+
+		const el = node as Element;
+		const tag = el.tagName.toLowerCase();
+
+		// Skip italic wrappers entirely
+		if (tag === 'i' || tag === 'em') return null;
+
+		if (tag === 'a') {
+			const href = el.getAttribute('href') ?? '';
+			if (
+				href.startsWith('/wiki/') &&
+				!href.substring(6).includes(':') &&
+				parenCount <= 0 &&
+				!el.querySelector('i') &&
+				!el.querySelector('em')
+			) {
+				return href.split('#')[0];
+			}
+			// Don't count text inside links toward paren depth
+			return null;
+		}
+
+		for (const child of node.childNodes) {
+			const result = walk(child);
+			if (result !== null) return result;
+		}
+		return null;
+	}
+
+	return walk(p);
 }

@@ -20,10 +20,19 @@ import type {
 } from './types';
 import { fetchArticleHtml, findFirstWikiLink, extractDisambiguationOptions } from './wikipedia';
 
+const previewCache = new Map<string, PreviewResponse>();
+const nextLinkCache = new Map<string, string | null>();
+const articleHtmlCache = new Map<string, string>();
+
 /**
  * Fetch article preview (title, extract, thumbnail)
  */
 export async function fetchPreview(title: string): Promise<PreviewResponse | null> {
+	const cacheKey = title.toLowerCase();
+	if (previewCache.has(cacheKey)) {
+		return previewCache.get(cacheKey)!;
+	}
+
 	const apiUrl = `${WIKIPEDIA_REST_API_URL}/page/summary/${encodeURIComponent(title)}`;
 
 	try {
@@ -36,13 +45,15 @@ export async function fetchPreview(title: string): Promise<PreviewResponse | nul
 		const data: WikipediaSummary = await res.json();
 		const isDisambiguation = data.type === 'disambiguation';
 
-		return {
+		const result: PreviewResponse = {
 			title: data.title,
 			extract: data.extract,
 			thumbnail: data.thumbnail?.source ?? null,
 			type: data.type,
 			isDisambiguation
 		};
+		previewCache.set(cacheKey, result);
+		return result;
 	} catch {
 		return null;
 	}
@@ -65,7 +76,8 @@ export async function fetchDisambiguationOptions(title: string): Promise<Disambi
  */
 export async function searchArticles(
 	query: string,
-	limit: number = SEARCH_LIMIT
+	limit: number = SEARCH_LIMIT,
+	signal?: AbortSignal
 ): Promise<SearchResult[]> {
 	if (!query.trim()) {
 		return [];
@@ -80,7 +92,7 @@ export async function searchArticles(
 	});
 
 	try {
-		const response = await fetch(`${WIKIPEDIA_API_URL}?${params}`);
+		const response = await fetch(`${WIKIPEDIA_API_URL}?${params}`, { signal });
 
 		if (!response.ok) {
 			return [];
@@ -130,7 +142,17 @@ export async function fetchRandomArticle(): Promise<string | null> {
  * Find next article in the chain
  */
 export async function findNextStep(title: string): Promise<StepResponse> {
+	const cacheKey = title.toLowerCase();
+	if (nextLinkCache.has(cacheKey)) {
+		const cachedLink = nextLinkCache.get(cacheKey)!;
+		if (!cachedLink) return { title, nextLink: null, nextPreview: null };
+		const nextTitle = decodeURIComponent(cachedLink.replace('/wiki/', '')).replace(/_/g, ' ');
+		const nextPreview = await fetchPreview(nextTitle);
+		return { title, nextLink: cachedLink, nextPreview };
+	}
+
 	const nextLink = await resolveNextLinkWithFallback(title);
+	nextLinkCache.set(cacheKey, nextLink);
 
 	if (!nextLink) {
 		return {
@@ -151,7 +173,7 @@ export async function findNextStep(title: string): Promise<StepResponse> {
 }
 
 async function resolveNextLinkWithFallback(title: string): Promise<string | null> {
-	const introHtml = await fetchArticleHtml(title, 'en', '0');
+	const introHtml = await fetchArticleHtmlCached(title, '0');
 	if (introHtml) {
 		const introLink = findFirstWikiLink(introHtml);
 		if (introLink) {
@@ -160,7 +182,7 @@ async function resolveNextLinkWithFallback(title: string): Promise<string | null
 	}
 
 	for (let section = 1; section <= LINK_FALLBACK_SECTION_MAX; section++) {
-		const sectionHtml = await fetchArticleHtml(title, 'en', section.toString());
+		const sectionHtml = await fetchArticleHtmlCached(title, section.toString());
 		if (!sectionHtml) {
 			continue;
 		}
@@ -171,10 +193,25 @@ async function resolveNextLinkWithFallback(title: string): Promise<string | null
 		}
 	}
 
-	const fullPageHtml = await fetchArticleHtml(title, 'en', null);
+	const fullPageHtml = await fetchArticleHtmlCached(title, null);
 	if (!fullPageHtml) {
 		return null;
 	}
 
 	return findFirstWikiLink(fullPageHtml);
+}
+
+async function fetchArticleHtmlCached(
+	title: string,
+	section: string | null
+): Promise<string | null> {
+	const key = `${title.toLowerCase()}__${section ?? 'full'}`;
+	if (articleHtmlCache.has(key)) {
+		return articleHtmlCache.get(key)!;
+	}
+	const html = await fetchArticleHtml(title, 'en', section);
+	if (html !== null) {
+		articleHtmlCache.set(key, html);
+	}
+	return html;
 }

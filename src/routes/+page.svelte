@@ -20,7 +20,8 @@
 		SEARCH_LIMIT,
 		TARGET_ARTICLE,
 		SCROLL_DELAY,
-		FINISH_SCROLL_DELAY
+		FINISH_SCROLL_DELAY,
+		STEP_DELAY
 	} from '$lib/constants';
 	import {
 		searchArticles,
@@ -44,7 +45,9 @@
 	let searchResults = $state<SearchResult[]>([]);
 	let isSearching = $state(false);
 	let searchTimeout: number = 0;
+	let searchAbortController: AbortController | null = null;
 	let abortController: AbortController | null = null;
+	let journeyStartTitle = $state<string | null>(null);
 	let visited = new SvelteSet<string>();
 	let isLoadingInitial = $state(false);
 	let isNearBottom = $state(true);
@@ -83,12 +86,7 @@
 		}
 	});
 
-	let randomQuote = $derived.by(() => {
-		if (journeyState.outcome === 'success') {
-			return PHILOSOPHY_QUOTES[Math.floor(Math.random() * PHILOSOPHY_QUOTES.length)];
-		}
-		return null;
-	});
+	let randomQuote = $state<(typeof PHILOSOPHY_QUOTES)[number] | null>(null);
 
 	let isJourneyActive = $derived(journeyState.status === 'RUNNING' || isLoadingInitial);
 
@@ -122,15 +120,25 @@
 			return;
 		}
 
+		searchAbortController?.abort();
+		const controller = new AbortController();
+		searchAbortController = controller;
+
 		isSearching = true;
 		try {
-			const results = await searchArticles(query, SEARCH_LIMIT);
-			searchResults = results;
+			const results = await searchArticles(query, SEARCH_LIMIT, controller.signal);
+			if (!controller.signal.aborted) {
+				searchResults = results;
+			}
 		} catch (err) {
-			console.error('Search error:', err);
-			searchResults = [];
+			if (!controller.signal.aborted) {
+				console.error('Search error:', err);
+				searchResults = [];
+			}
 		} finally {
-			isSearching = false;
+			if (!controller.signal.aborted) {
+				isSearching = false;
+			}
 		}
 	}
 
@@ -221,6 +229,7 @@
 
 	async function startJourney(initialTitle: string): Promise<void> {
 		// Reset state
+		journeyStartTitle = initialTitle;
 		abortController = new AbortController();
 		visited.clear();
 		isLoadingInitial = true;
@@ -310,6 +319,7 @@
 
 				// Check success
 				if (currentTitle.toLowerCase() === TARGET_ARTICLE) {
+					randomQuote = PHILOSOPHY_QUOTES[Math.floor(Math.random() * PHILOSOPHY_QUOTES.length)];
 					journeyState = {
 						...journeyState,
 						status: 'FINISHED',
@@ -331,7 +341,10 @@
 
 				// Fetch next step
 				try {
-					const stepData = await findNextStep(currentTitle);
+					const [stepData] = await Promise.all([
+						findNextStep(currentTitle),
+						new Promise((r) => setTimeout(r, STEP_DELAY))
+					]);
 
 					// Check dead end
 					if (!stepData.nextLink || !stepData.nextPreview) {
@@ -410,6 +423,8 @@
 		};
 		visited.clear();
 		abortController = null;
+		journeyStartTitle = null;
+		randomQuote = null;
 		closeDisambiguationDialog();
 		isLoadingInitial = false;
 		isNearBottom = true;
@@ -692,7 +707,7 @@
 											<Item.Title>{article.title}</Item.Title>
 											<Item.Description class="line-clamp-1"
 												>{article.isDisambiguation
-													? 'Disambugation Page'
+													? 'Disambiguation Page'
 													: getFirstSentence(article.extract)}</Item.Description
 											>
 										</Item.Content>
@@ -740,7 +755,12 @@
 
 				<!-- New Journey Button -->
 				{#if journeyState.status === 'FINISHED' && journeyState.outcome}
-					<div class="mx-auto mt-12 max-w-3xl text-center">
+					<div class="mx-auto mt-12 flex max-w-3xl justify-center gap-3">
+						{#if journeyState.outcome === 'error' && journeyStartTitle}
+							<Button variant="outline" onclick={() => startJourney(journeyStartTitle!)}
+								>Try Again</Button
+							>
+						{/if}
 						<Button onclick={resetJourney}>Start a New Journey</Button>
 					</div>
 				{/if}
@@ -787,7 +807,12 @@
 						class="h-auto w-full justify-start px-3 py-2 text-left"
 						onclick={() => resolveDisambiguationSelection(option.title)}
 					>
-						<span class="font-medium">{option.title}</span>
+						<div class="flex flex-col items-start gap-0.5">
+							<span class="font-medium">{option.title}</span>
+							{#if option.description}
+								<span class="line-clamp-1 text-xs text-muted-foreground">{option.description}</span>
+							{/if}
+						</div>
 					</Button>
 				{/each}
 			</div>

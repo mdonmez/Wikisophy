@@ -51,6 +51,12 @@ export const SCROLL_DELAY = 150;
 export const FINISH_SCROLL_DELAY = 200;
 
 /**
+ * Minimum delay between journey steps (ms)
+ * Keeps the animation feeling natural even when results are cached
+ */
+export const STEP_DELAY = 300;
+
+/**
  * Highest section index to scan when section 0 has no valid link.
  * Scanner checks sections 1..N before full-page fallback.
  */
