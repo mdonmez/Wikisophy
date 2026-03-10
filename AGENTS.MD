@@ -7,7 +7,7 @@ Wikisophy is a SvelteKit 2 + Svelte 5 app demonstrating the Wikipedia "Getting t
 ## Build Commands
 
 ```bash
-# Development & Building
+# Development
 bun run dev              # Start dev server
 bun run build            # Production build (static adapter)
 bun run preview          # Preview production build
@@ -23,10 +23,10 @@ bun run format           # Format all files with Prettier
 
 ## Technology Stack
 
-- **SvelteKit 2.49+** with static adapter (GitHub Pages deployment)
-- **Svelte 5.45+** using Runes syntax exclusively
-- **TypeScript 5.9+** with strict mode enabled
-- **Tailwind CSS 4.1+** with shadcn-svelte components
+- **SvelteKit 2.53+** with static adapter (GitHub Pages)
+- **Svelte 5.53+** using Runes syntax exclusively
+- **TypeScript 5.9+** with strict mode
+- **Tailwind CSS 4.2+** with shadcn-svelte components
 - **Bun** for package management
 
 ## Code Style Guidelines
@@ -45,9 +45,7 @@ let doubled = $derived(count * 2);
 let result = $derived.by(() => compute(value));
 
 // Effects
-$effect(() => {
-	console.log(count);
-});
+$effect(() => { console.log(count); });
 
 // Props
 let { title, children }: Props = $props();
@@ -59,7 +57,7 @@ let value = $bindable(); // Two-way binding
 - **Strict mode** - All code must pass strict checks
 - **Explicit return types** - Annotate all function returns
 - **Avoid `any`** - Use `unknown` or specific types
-- Use TypeScript 5.9+ modern syntax
+- Use modern TypeScript 5.9+ syntax
 
 ### Imports (Order Matters)
 
@@ -78,18 +76,10 @@ import { base } from '$app/paths';
 ### Formatting (Prettier)
 
 ```json
-{
-	"useTabs": true,
-	"singleQuote": true,
-	"trailingComma": "none",
-	"printWidth": 100
-}
+{ "useTabs": true, "singleQuote": true, "trailingComma": "none", "printWidth": 100 }
 ```
 
-- **Tabs** for indentation
-- **Single quotes**
-- **No trailing commas**
-- **100 character** line width
+- **Tabs** for indentation | **Single quotes** | **No trailing commas** | **100 char** line width
 
 ### Naming Conventions
 
@@ -108,11 +98,7 @@ import { base } from '$app/paths';
 
 ```typescript
 // Always handle errors gracefully
-try {
-	return await fetchData();
-} catch {
-	return null; // or appropriate fallback
-}
+try { return await fetchData(); } catch { return null; }
 
 // Early returns for validation
 if (!data) return null;
@@ -120,27 +106,12 @@ if (!data) return null;
 
 ### JSDoc
 
-Document all exported functions:
-
-```typescript
-/**
- * Fetches article HTML from Wikipedia
- * @param title - Article title to fetch
- * @param lang - Wikipedia language code (default: 'en')
- * @returns HTML string or null if fetch fails
- */
-export async function fetchArticleHtml(
-  title: string,
-  lang: string = 'en'
-): Promise<string | null> { ... }
-```
+Document all exported functions with JSDoc comments.
 
 ### Styling
 
 - Use **Tailwind CSS** utility classes exclusively
 - Use `cn()` utility from `$lib/utils` for conditional classes
-- Use `tailwind-variants` for component variants
-- Mobile-first responsive design
 - Never use inline `<style>` blocks
 
 ## Project Structure
@@ -149,16 +120,16 @@ export async function fetchArticleHtml(
 src/
 ├── lib/
 │   ├── components/ui/      # shadcn-svelte UI components
-│   ├── constants.ts        # App constants (MAX_STEPS, etc.)
-│   ├── types.ts           # TypeScript type definitions
-│   ├── utils.ts           # cn() helper and type utilities
-│   ├── wikipedia.ts       # Wikipedia HTML parsing logic
-│   ├── wikipedia-client.ts # Client-side Wikipedia API calls
-│   └── quotes.ts          # Philosophy quotes collection
+│   ├── constants.ts         # App constants (MAX_STEPS, etc.)
+│   ├── types.ts             # TypeScript type definitions
+│   ├── utils.ts             # cn() helper and type utilities
+│   ├── wikipedia.ts         # Wikipedia HTML parsing logic
+│   ├── wikipedia-client.ts  # Client-side Wikipedia API calls
+│   └── quotes.ts            # Philosophy quotes collection
 └── routes/
-    ├── +layout.svelte     # Root layout with ModeWatcher
-    ├── +page.svelte       # Main application page
-    └── layout.css         # Global styles and CSS variables
+    ├── +layout.svelte       # Root layout with ModeWatcher
+    ├── +page.svelte         # Main application page
+    └── layout.css           # Global styles and CSS variables
 ```
 
 ## Core Patterns
@@ -166,7 +137,6 @@ src/
 ### Wikipedia Link Parsing Rules
 
 Valid links must:
-
 - Start with `/wiki/`
 - NOT contain `:` (excludes File:, Help:, Category:)
 - NOT be inside parentheses `()`
@@ -176,13 +146,9 @@ Valid links must:
 ### State Management
 
 ```typescript
-// Centralized state with derived values
 let journeyState = $state<JourneyState>({
-	status: 'IDLE',
-	path: [],
-	outcome: null
+  status: 'IDLE', path: [], outcome: null
 });
-
 let isActive = $derived(journeyState.status === 'RUNNING');
 ```
 
@@ -190,9 +156,9 @@ let isActive = $derived(journeyState.status === 'RUNNING');
 
 ```typescript
 $effect(() => {
-	const query = searchQuery;
-	clearTimeout(timeout);
-	timeout = setTimeout(() => handleSearch(query), SEARCH_DEBOUNCE);
+  const query = searchQuery;
+  clearTimeout(timeout);
+  timeout = setTimeout(() => handleSearch(query), SEARCH_DEBOUNCE);
 });
 ```
 
@@ -204,7 +170,3 @@ $effect(() => {
 4. **Static export** - GitHub Pages deployment with `base: '/wikisophy'`
 5. **Strict TypeScript** - No `any` types
 6. **shadcn-svelte** - Use existing UI components
-
----
-
-**Last Updated:** February 15, 2026
