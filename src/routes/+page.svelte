@@ -11,6 +11,7 @@
 	import * as Item from '$lib/components/ui/item/index.js';
 	import { PHILOSOPHY_QUOTES } from '$lib/quotes';
 	import { fly } from 'svelte/transition';
+	import { untrack } from 'svelte';
 	import { cubicInOut } from 'svelte/easing';
 	import { SvelteSet } from 'svelte/reactivity';
 	import type { Article, SearchResult, JourneyState, DisambiguationOption } from '$lib/types';
@@ -51,6 +52,7 @@
 	let visited = new SvelteSet<string>();
 	let isLoadingInitial = $state(false);
 	let isNearBottom = $state(true);
+	let bottomSentinel = $state<HTMLElement | null>(null);
 	let disambiguationOpen = $state(false);
 	let disambiguationSourceTitle = $state('');
 	let disambiguationOptions = $state<DisambiguationOption[]>([]);
@@ -163,37 +165,30 @@
 	});
 
 	$effect(() => {
-		const updateNearBottom = () => {
-			const scrollingElement = document.scrollingElement ?? document.documentElement;
-			const distanceToBottom =
-				scrollingElement.scrollHeight - scrollingElement.scrollTop - scrollingElement.clientHeight;
-			isNearBottom = distanceToBottom <= 240;
-		};
-
-		updateNearBottom();
-		window.addEventListener('scroll', updateNearBottom, { passive: true });
-		window.addEventListener('resize', updateNearBottom, { passive: true });
-		return () => {
-			window.removeEventListener('scroll', updateNearBottom);
-			window.removeEventListener('resize', updateNearBottom);
-		};
+		if (!bottomSentinel) return;
+		const observer = new IntersectionObserver(
+			([entry]) => {
+				isNearBottom = entry.isIntersecting;
+			},
+			{ rootMargin: '0px 0px 240px 0px' }
+		);
+		observer.observe(bottomSentinel);
+		return () => observer.disconnect();
 	});
 
 	// Auto-scroll while RUNNING only if user is near bottom
 	$effect(() => {
 		if (journeyState.path.length === 0) return;
-		if (!isNearBottom) return;
+		// Read isNearBottom without tracking it — IntersectionObserver fires as content
+		// grows, which would otherwise cancel the pending scroll timeout mid-flight.
+		if (!untrack(() => isNearBottom)) return;
 
 		// Scroll if running or just finished
 		if (journeyState.status === 'RUNNING') {
-			const timeout = setTimeout(() => {
-				scrollToBottom();
-			}, SCROLL_DELAY);
+			const timeout = setTimeout(scrollToBottom, SCROLL_DELAY);
 			return () => clearTimeout(timeout);
 		} else if (journeyState.status === 'FINISHED') {
-			const timeout = setTimeout(() => {
-				scrollToBottom();
-			}, FINISH_SCROLL_DELAY);
+			const timeout = setTimeout(scrollToBottom, FINISH_SCROLL_DELAY);
 			return () => clearTimeout(timeout);
 		}
 	});
@@ -431,8 +426,7 @@
 	}
 
 	function scrollToBottom(): void {
-		const scrollingElement = document.scrollingElement ?? document.documentElement;
-		window.scrollTo({ top: scrollingElement.scrollHeight, behavior: 'smooth' });
+		window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
 	}
 
 	function getBadgeLabel(article: Article, index: number): string | number {
@@ -766,6 +760,7 @@
 				{/if}
 			</div>
 		</main>
+		<div bind:this={bottomSentinel} aria-hidden="true" class="h-0"></div>
 	</div>
 
 	<!-- Floating Action Button: Show Latest -->
@@ -807,12 +802,7 @@
 						class="h-auto w-full justify-start px-3 py-2 text-left"
 						onclick={() => resolveDisambiguationSelection(option.title)}
 					>
-						<div class="flex flex-col items-start gap-0.5">
-							<span class="font-medium">{option.title}</span>
-							{#if option.description}
-								<span class="line-clamp-1 text-xs text-muted-foreground">{option.description}</span>
-							{/if}
-						</div>
+						<span class="font-medium">{option.title}</span>
 					</Button>
 				{/each}
 			</div>
