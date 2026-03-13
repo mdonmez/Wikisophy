@@ -7,12 +7,14 @@
  * @param title - Article title to fetch
  * @param lang - Wikipedia language code (default: 'en')
  * @param section - Section number, or null to fetch full page (default: '0')
+ * @param signal - Optional AbortSignal for cancelling the request
  * @returns HTML string or null if fetch fails
  */
 export async function fetchArticleHtml(
 	title: string,
 	lang: string = 'en',
-	section: string | null = '0'
+	section: string | null = '0',
+	signal?: AbortSignal
 ): Promise<string | null> {
 	const params = new URLSearchParams({
 		action: 'parse',
@@ -28,7 +30,7 @@ export async function fetchArticleHtml(
 	}
 
 	try {
-		const response = await fetch(`https://${lang}.wikipedia.org/w/api.php?${params}`);
+		const response = await fetch(`https://${lang}.wikipedia.org/w/api.php?${params}`, { signal });
 
 		if (!response.ok) return null;
 		const data = await response.json();

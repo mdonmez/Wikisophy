@@ -28,7 +28,10 @@ const articleHtmlCache = new Map<string, string>();
 /**
  * Fetch article preview (title, extract, thumbnail)
  */
-export async function fetchPreview(title: string): Promise<PreviewResponse | null> {
+export async function fetchPreview(
+	title: string,
+	signal?: AbortSignal
+): Promise<PreviewResponse | null> {
 	const cacheKey = title.toLowerCase();
 	if (previewCache.has(cacheKey)) {
 		return previewCache.get(cacheKey)!;
@@ -37,7 +40,7 @@ export async function fetchPreview(title: string): Promise<PreviewResponse | nul
 	const apiUrl = `${WIKIPEDIA_REST_API_URL}/page/summary/${encodeURIComponent(title)}`;
 
 	try {
-		const res = await fetch(apiUrl);
+		const res = await fetch(apiUrl, { signal });
 
 		if (!res.ok) {
 			return null;
@@ -63,8 +66,11 @@ export async function fetchPreview(title: string): Promise<PreviewResponse | nul
 /**
  * Fetch disambiguation options by parsing full article HTML
  */
-export async function fetchDisambiguationOptions(title: string): Promise<DisambiguationOption[]> {
-	const html = await fetchArticleHtml(title, 'en', null);
+export async function fetchDisambiguationOptions(
+	title: string,
+	signal?: AbortSignal
+): Promise<DisambiguationOption[]> {
+	const html = await fetchArticleHtml(title, 'en', null, signal);
 	if (!html) {
 		return [];
 	}
@@ -152,17 +158,17 @@ export async function fetchRandomArticle(): Promise<string | null> {
 /**
  * Find next article in the chain
  */
-export async function findNextStep(title: string): Promise<StepResponse> {
+export async function findNextStep(title: string, signal?: AbortSignal): Promise<StepResponse> {
 	const cacheKey = title.toLowerCase();
 	if (nextLinkCache.has(cacheKey)) {
 		const cachedLink = nextLinkCache.get(cacheKey)!;
 		if (!cachedLink) return { title, nextLink: null, nextPreview: null };
 		const nextTitle = decodeURIComponent(cachedLink.replace('/wiki/', '')).replace(/_/g, ' ');
-		const nextPreview = await fetchPreview(nextTitle);
+		const nextPreview = await fetchPreview(nextTitle, signal);
 		return { title, nextLink: cachedLink, nextPreview };
 	}
 
-	const nextLink = await resolveNextLinkWithFallback(title);
+	const nextLink = await resolveNextLinkWithFallback(title, signal);
 	nextLinkCache.set(cacheKey, nextLink);
 
 	if (!nextLink) {
@@ -174,7 +180,7 @@ export async function findNextStep(title: string): Promise<StepResponse> {
 	}
 
 	const nextTitle = decodeURIComponent(nextLink.replace('/wiki/', '')).replace(/_/g, ' ');
-	const nextPreview = await fetchPreview(nextTitle);
+	const nextPreview = await fetchPreview(nextTitle, signal);
 
 	return {
 		title,
@@ -183,8 +189,11 @@ export async function findNextStep(title: string): Promise<StepResponse> {
 	};
 }
 
-async function resolveNextLinkWithFallback(title: string): Promise<string | null> {
-	const introHtml = await fetchArticleHtmlCached(title, '0');
+async function resolveNextLinkWithFallback(
+	title: string,
+	signal?: AbortSignal
+): Promise<string | null> {
+	const introHtml = await fetchArticleHtmlCached(title, '0', signal);
 	if (introHtml) {
 		const introLink = findFirstWikiLink(introHtml);
 		if (introLink) {
@@ -193,7 +202,7 @@ async function resolveNextLinkWithFallback(title: string): Promise<string | null
 	}
 
 	for (let section = 1; section <= LINK_FALLBACK_SECTION_MAX; section++) {
-		const sectionHtml = await fetchArticleHtmlCached(title, section.toString());
+		const sectionHtml = await fetchArticleHtmlCached(title, section.toString(), signal);
 		if (!sectionHtml) {
 			continue;
 		}
@@ -204,7 +213,7 @@ async function resolveNextLinkWithFallback(title: string): Promise<string | null
 		}
 	}
 
-	const fullPageHtml = await fetchArticleHtmlCached(title, null);
+	const fullPageHtml = await fetchArticleHtmlCached(title, null, signal);
 	if (!fullPageHtml) {
 		return null;
 	}
@@ -214,13 +223,14 @@ async function resolveNextLinkWithFallback(title: string): Promise<string | null
 
 async function fetchArticleHtmlCached(
 	title: string,
-	section: string | null
+	section: string | null,
+	signal?: AbortSignal
 ): Promise<string | null> {
 	const key = `${title.toLowerCase()}__${section ?? 'full'}`;
 	if (articleHtmlCache.has(key)) {
 		return articleHtmlCache.get(key)!;
 	}
-	const html = await fetchArticleHtml(title, 'en', section);
+	const html = await fetchArticleHtml(title, 'en', section, signal);
 	if (html !== null) {
 		articleHtmlCache.set(key, html);
 	}

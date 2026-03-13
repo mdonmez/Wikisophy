@@ -226,12 +226,13 @@
 		// Reset state
 		journeyStartTitle = initialTitle;
 		abortController = new AbortController();
+		const signal = abortController.signal;
 		visited.clear();
 		isLoadingInitial = true;
 
 		// Fetch initial article preview
 		try {
-			const previewData = await fetchPreview(initialTitle);
+			const previewData = await fetchPreview(initialTitle, signal);
 
 			if (!previewData) {
 				throw new Error('Failed to fetch initial article');
@@ -261,8 +262,8 @@
 			let currentPreview = previewData;
 			let currentTitle = currentPreview.title;
 
-			while (currentPreview.isDisambiguation) {
-				const options = await fetchDisambiguationOptions(currentPreview.title);
+				while (currentPreview.isDisambiguation) {
+					const options = await fetchDisambiguationOptions(currentPreview.title, signal);
 
 				if (options.length === 0) {
 					journeyState = {
@@ -278,7 +279,7 @@
 					return;
 				}
 
-				const selectedPreview = await fetchPreview(selectedTitle);
+					const selectedPreview = await fetchPreview(selectedTitle, signal);
 				if (!selectedPreview) {
 					journeyState = {
 						...journeyState,
@@ -337,9 +338,10 @@
 				// Fetch next step
 				try {
 					const [stepData] = await Promise.all([
-						findNextStep(currentTitle),
+						findNextStep(currentTitle, signal),
 						new Promise((r) => setTimeout(r, STEP_DELAY))
 					]);
+					if (signal.aborted) return;
 
 					// Check dead end
 					if (!stepData.nextLink || !stepData.nextPreview) {
