@@ -61,3 +61,8 @@ export const STEP_DELAY = 300;
  * Scanner checks sections 1..N before full-page fallback.
  */
 export const LINK_FALLBACK_SECTION_MAX = 2;
+
+/**
+ * Max attempts to fetch a non-disambiguation random article
+ */
+export const RANDOM_ARTICLE_MAX_ATTEMPTS = 5;

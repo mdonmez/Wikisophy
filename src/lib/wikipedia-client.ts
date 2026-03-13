@@ -6,6 +6,7 @@
 import {
 	WIKIPEDIA_API_URL,
 	WIKIPEDIA_REST_API_URL,
+	RANDOM_ARTICLE_MAX_ATTEMPTS,
 	SEARCH_LIMIT,
 	LINK_FALLBACK_SECTION_MAX
 } from './constants';
@@ -115,27 +116,37 @@ export async function searchArticles(
  * Fetch random Wikipedia article
  */
 export async function fetchRandomArticle(): Promise<string | null> {
-	const params = new URLSearchParams({
-		action: 'query',
-		list: 'random',
-		rnnamespace: '0',
-		rnlimit: '1',
-		format: 'json',
-		origin: '*'
-	});
+	for (let attempt = 0; attempt < RANDOM_ARTICLE_MAX_ATTEMPTS; attempt++) {
+		const params = new URLSearchParams({
+			action: 'query',
+			generator: 'random',
+			grnnamespace: '0',
+			grnlimit: '1',
+			prop: 'pageprops',
+			ppprop: 'disambiguation',
+			format: 'json',
+			origin: '*'
+		});
 
-	try {
-		const res = await fetch(`${WIKIPEDIA_API_URL}?${params}`);
+		try {
+			const res = await fetch(`${WIKIPEDIA_API_URL}?${params}`);
 
-		if (!res.ok) {
+			if (!res.ok) {
+				return null;
+			}
+
+			const data: WikipediaRandomResult = await res.json();
+			const pages = Object.values(data.query?.pages ?? {});
+			const page = pages.find((entry) => !entry.pageprops?.disambiguation);
+			if (page) {
+				return page.title;
+			}
+		} catch {
 			return null;
 		}
-
-		const data: WikipediaRandomResult = await res.json();
-		return data.query?.random?.[0]?.title ?? null;
-	} catch {
-		return null;
 	}
+
+	return null;
 }
 
 /**

@@ -113,7 +113,15 @@ export type WikipediaOpenSearchResult = [string, string[], string[], string[]];
  */
 export type WikipediaRandomResult = {
 	query?: {
-		random?: Array<{ title: string }>;
+		pages?: Record<
+			string,
+			{
+				title: string;
+				pageprops?: {
+					disambiguation?: string;
+				};
+			}
+		>;
 	};
 };
 
