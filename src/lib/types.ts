@@ -120,6 +120,9 @@ export type WikipediaRandomResult = {
 				pageprops?: {
 					disambiguation?: string;
 				};
+				categories?: {
+					title: string;
+				}[];
 			}
 		>;
 	};

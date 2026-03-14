@@ -128,8 +128,11 @@ export async function fetchRandomArticle(): Promise<string | null> {
 			generator: 'random',
 			grnnamespace: '0',
 			grnlimit: '1',
-			prop: 'pageprops',
+			grnfilterredir: 'nonredirects',
+			prop: 'pageprops|categories',
 			ppprop: 'disambiguation',
+			cllimit: '500',
+			clshow: '!hidden',
 			format: 'json',
 			origin: '*'
 		});
@@ -143,10 +146,14 @@ export async function fetchRandomArticle(): Promise<string | null> {
 
 			const data: WikipediaRandomResult = await res.json();
 			const pages = Object.values(data.query?.pages ?? {});
-			const page = pages.find((entry) => !entry.pageprops?.disambiguation);
-			if (page) {
-				return page.title;
-			}
+			const page = pages.find((entry) => {
+				if (entry.pageprops?.disambiguation) return false;
+				const hasDisambiguationCategory = (entry.categories ?? []).some((category) =>
+					category.title.toLowerCase() === 'category:disambiguation pages'
+				);
+				return !hasDisambiguationCategory;
+			});
+			if (page) return page.title;
 		} catch {
 			return null;
 		}
