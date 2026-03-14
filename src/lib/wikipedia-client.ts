@@ -19,10 +19,15 @@ import type {
 	WikipediaOpenSearchResult,
 	WikipediaRandomResult
 } from './types';
+import { loadCacheMap, persistCacheMap, touchMapEntry } from './localStorageCache';
 import { fetchArticleHtml, findFirstWikiLink, extractDisambiguationOptions } from './wikipedia';
 
-const previewCache = new Map<string, PreviewResponse>();
-const nextLinkCache = new Map<string, string | null>();
+const LOCAL_CACHE_LIMIT = 100;
+const PREVIEW_CACHE_KEY = 'wikisophy.previewCache.v1';
+const NEXT_LINK_CACHE_KEY = 'wikisophy.nextLinkCache.v1';
+
+const previewCache = loadCacheMap<PreviewResponse>(PREVIEW_CACHE_KEY);
+const nextLinkCache = loadCacheMap<string | null>(NEXT_LINK_CACHE_KEY);
 const articleHtmlCache = new Map<string, string>();
 
 /**
@@ -33,9 +38,8 @@ export async function fetchPreview(
 	signal?: AbortSignal
 ): Promise<PreviewResponse | null> {
 	const cacheKey = title.toLowerCase();
-	if (previewCache.has(cacheKey)) {
-		return previewCache.get(cacheKey)!;
-	}
+	const cachedPreview = touchMapEntry(previewCache, cacheKey);
+	if (cachedPreview !== undefined) return cachedPreview;
 
 	const apiUrl = `${WIKIPEDIA_REST_API_URL}/page/summary/${encodeURIComponent(title)}`;
 
@@ -57,6 +61,7 @@ export async function fetchPreview(
 			isDisambiguation
 		};
 		previewCache.set(cacheKey, result);
+		persistCacheMap(PREVIEW_CACHE_KEY, previewCache, LOCAL_CACHE_LIMIT);
 		return result;
 	} catch {
 		return null;
@@ -167,8 +172,8 @@ export async function fetchRandomArticle(): Promise<string | null> {
  */
 export async function findNextStep(title: string, signal?: AbortSignal): Promise<StepResponse> {
 	const cacheKey = title.toLowerCase();
-	if (nextLinkCache.has(cacheKey)) {
-		const cachedLink = nextLinkCache.get(cacheKey)!;
+	const cachedLink = touchMapEntry(nextLinkCache, cacheKey);
+	if (cachedLink !== undefined) {
 		if (!cachedLink) return { title, nextLink: null, nextPreview: null };
 		const nextTitle = decodeURIComponent(cachedLink.replace('/wiki/', '')).replace(/_/g, ' ');
 		const nextPreview = await fetchPreview(nextTitle, signal);
@@ -177,6 +182,7 @@ export async function findNextStep(title: string, signal?: AbortSignal): Promise
 
 	const nextLink = await resolveNextLinkWithFallback(title, signal);
 	nextLinkCache.set(cacheKey, nextLink);
+	persistCacheMap(NEXT_LINK_CACHE_KEY, nextLinkCache, LOCAL_CACHE_LIMIT);
 
 	if (!nextLink) {
 		return {

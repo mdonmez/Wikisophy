@@ -10,6 +10,7 @@
 	import * as Command from '$lib/components/ui/command/index.js';
 	import * as Item from '$lib/components/ui/item/index.js';
 	import { PHILOSOPHY_QUOTES } from '$lib/quotes';
+	import { loadCacheMap, persistCacheMap, touchMapEntry } from '$lib/localStorageCache';
 	import { fly } from 'svelte/transition';
 	import { untrack } from 'svelte';
 	import { cubicInOut } from 'svelte/easing';
@@ -92,26 +93,34 @@
 
 	let isJourneyActive = $derived(journeyState.status === 'RUNNING' || isLoadingInitial);
 
+	const LOCAL_CACHE_LIMIT = 100;
+	const AVATAR_CACHE_KEY = 'wikisophy.avatarCache.v1';
+	const SENTENCE_CACHE_KEY = 'wikisophy.sentenceCache.v1';
+
 	// Memoization cache for avatar URLs and sentences (plain Map — not reactive)
-	const avatarCache = new Map<string, string>();
-	const sentenceCache = new Map<string, string>();
+	const avatarCache = loadCacheMap<string>(AVATAR_CACHE_KEY);
+	const sentenceCache = loadCacheMap<string>(SENTENCE_CACHE_KEY);
 
 	// Helper to get first sentence with caching
 	function getFirstSentence(text: string): string {
 		if (!text) return '';
-		if (sentenceCache.has(text)) return sentenceCache.get(text)!;
+		const cachedSentence = touchMapEntry(sentenceCache, text);
+		if (cachedSentence !== undefined) return cachedSentence;
 		const match = text.match(/^[^.!?]+[.!?]/);
 		const result = match ? match[0] : text.slice(0, 100) + '…';
 		sentenceCache.set(text, result);
+		persistCacheMap(SENTENCE_CACHE_KEY, sentenceCache, LOCAL_CACHE_LIMIT);
 		return result;
 	}
 
 	// Generate DiceBear shapes avatar with caching
 	function getAvatarUrl(title: string): string {
-		if (avatarCache.has(title)) return avatarCache.get(title)!;
+		const cachedAvatar = touchMapEntry(avatarCache, title);
+		if (cachedAvatar !== undefined) return cachedAvatar;
 		const seed = encodeURIComponent(title);
 		const url = `https://api.dicebear.com/9.x/shapes/svg?seed=${seed}&backgroundColor=transparent`;
 		avatarCache.set(title, url);
+		persistCacheMap(AVATAR_CACHE_KEY, avatarCache, LOCAL_CACHE_LIMIT);
 		return url;
 	}
 
