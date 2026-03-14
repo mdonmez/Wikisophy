@@ -495,7 +495,7 @@
 
 <div class="flex min-h-screen flex-col bg-background font-sans text-foreground">
 	<!-- Header -->
-	<header class="sticky top-0 z-50 w-full border-b bg-background">
+	<header class="fixed top-0 left-0 z-50 w-full border-b bg-background">
 		<div class="flex items-center justify-between px-4 py-2">
 			<div class="flex items-center gap-3">
 				<div class="logo-transition">
@@ -600,7 +600,7 @@
 	</header>
 
 	<!-- Main Content -->
-	<div class="container mx-auto px-4">
+	<div class="container mx-auto px-4 pt-16">
 		<main class="py-8">
 			<!-- Hero Section -->
 			<div class="mx-auto flex max-w-3xl flex-col gap-6 pt-2">
