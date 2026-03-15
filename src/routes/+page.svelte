@@ -45,6 +45,7 @@
 	import { base } from '$app/paths';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import autoAnimate from '@formkit/auto-animate';
 
 	// State
 	let journeyState = $state<JourneyState>({
@@ -64,11 +65,15 @@
 	let isLoadingInitial = $state(false);
 	let isNearBottom = $state(true);
 	let bottomSentinel = $state<HTMLElement | null>(null);
+	let pathContainer = $state<HTMLElement | null>(null);
+	let starterCategoriesContainer = $state<HTMLElement | null>(null);
+	let disambiguationOptionsContainer = $state<HTMLElement | null>(null);
 	let disambiguationOpen = $state(false);
 	let disambiguationSourceTitle = $state('');
 	let disambiguationOptions = $state<DisambiguationOption[]>([]);
 	let disambiguationResolver: ((title: string | null) => void) | null = null;
 	let wasDisambiguationOpen = false;
+	let previousHtmlOverflow: string | null = null;
 
 	// Derived states
 	let cycleIndexes = $derived.by(() => {
@@ -102,6 +107,12 @@
 	let randomQuote = $state<(typeof PHILOSOPHY_QUOTES)[number] | null>(null);
 
 	let isJourneyActive = $derived(journeyState.status === 'RUNNING' || isLoadingInitial);
+	let showStarterCategories = $derived(
+		journeyState.status === 'IDLE' &&
+			journeyState.path.length === 0 &&
+			searchQuery.trim() === '' &&
+			!isLoadingInitial
+	);
 
 	const starterCategories = [
 		{
@@ -241,6 +252,23 @@
 	});
 
 	$effect(() => {
+		if (typeof document === 'undefined') return;
+
+		if (disambiguationOpen) {
+			if (previousHtmlOverflow === null) {
+				previousHtmlOverflow = document.documentElement.style.overflow;
+			}
+			document.documentElement.style.overflow = 'hidden';
+			return;
+		}
+
+		if (previousHtmlOverflow !== null) {
+			document.documentElement.style.overflow = previousHtmlOverflow;
+			previousHtmlOverflow = null;
+		}
+	});
+
+	$effect(() => {
 		if (!bottomSentinel) return;
 		const observer = new IntersectionObserver(
 			([entry]) => {
@@ -250,6 +278,40 @@
 		);
 		observer.observe(bottomSentinel);
 		return () => observer.disconnect();
+	});
+
+	$effect(() => {
+		return () => {
+			if (typeof document === 'undefined') return;
+			if (previousHtmlOverflow !== null) {
+				document.documentElement.style.overflow = previousHtmlOverflow;
+				previousHtmlOverflow = null;
+			}
+		};
+	});
+
+	$effect(() => {
+		if (!pathContainer) return;
+		const controller = autoAnimate(pathContainer, { duration: 250, easing: 'ease-in-out' });
+		return () => controller.destroy?.();
+	});
+
+	$effect(() => {
+		if (!starterCategoriesContainer) return;
+		const controller = autoAnimate(starterCategoriesContainer, {
+			duration: 220,
+			easing: 'ease-in-out'
+		});
+		return () => controller.destroy?.();
+	});
+
+	$effect(() => {
+		if (!disambiguationOptionsContainer) return;
+		const controller = autoAnimate(disambiguationOptionsContainer, {
+			duration: 200,
+			easing: 'ease-in-out'
+		});
+		return () => controller.destroy?.();
 	});
 
 	// Auto-scroll while RUNNING only if user is near bottom
@@ -360,8 +422,8 @@
 			let currentPreview = previewData;
 			let currentTitle = currentPreview.title;
 
-				while (currentPreview.isDisambiguation) {
-					const options = await fetchDisambiguationOptions(currentPreview.title, signal);
+			while (currentPreview.isDisambiguation) {
+				const options = await fetchDisambiguationOptions(currentPreview.title, signal);
 
 				if (options.length === 0) {
 					journeyState = {
@@ -377,7 +439,7 @@
 					return;
 				}
 
-					const selectedPreview = await fetchPreview(selectedTitle, signal);
+				const selectedPreview = await fetchPreview(selectedTitle, signal);
 				if (!selectedPreview) {
 					journeyState = {
 						...journeyState,
@@ -761,31 +823,34 @@
 			</div>
 
 			<!-- Try These Starters -->
-			<div class="mx-auto mt-6 max-w-3xl">
-				<div class="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-					Try these starters
-				</div>
-				<div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-					{#each starterCategories as category (category.label)}
-						<Button
-							variant="outline"
-							class="h-auto justify-start gap-3 px-3 py-3"
-							onclick={() => handleCategoryStarter(category.queries)}
-							disabled={isJourneyActive}
-						>
-							<span class="grid size-9 place-items-center">
-								<svelte:component this={category.icon} class={`h-5 w-5 ${category.colorClass}`} />
-							</span>
-							<span class="text-sm font-medium">{category.label}</span>
-						</Button>
-					{/each}
-				</div>
+			<div bind:this={starterCategoriesContainer} class="mx-auto mt-6 max-w-3xl">
+				{#if showStarterCategories}
+					<div class="mb-3 text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+						Try these starters
+					</div>
+					<div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+						{#each starterCategories as category (category.label)}
+							{@const CategoryIcon = category.icon}
+							<Button
+								variant="outline"
+								class="h-auto justify-start gap-3 px-3 py-3"
+								onclick={() => handleCategoryStarter(category.queries)}
+								disabled={isJourneyActive}
+							>
+								<span class="grid size-9 place-items-center">
+									<CategoryIcon class={`h-5 w-5 ${category.colorClass}`} />
+								</span>
+								<span class="text-sm font-medium">{category.label}</span>
+							</Button>
+						{/each}
+					</div>
+				{/if}
 			</div>
 
 			<!-- Path Section -->
 			{#if journeyState.path.length > 0 || journeyState.status === 'RUNNING' || isLoadingInitial}
 				<div class="mx-auto mt-12 max-w-3xl">
-					<div class="flex flex-col gap-4">
+					<div bind:this={pathContainer} class="flex flex-col gap-4">
 						{#each journeyState.path as article, index (article.title + index)}
 							{@const isCycleItem = cycleIndexes.includes(index)}
 							<Item.Root
@@ -904,7 +969,7 @@
 	{/if}
 
 	<Dialog.Root bind:open={disambiguationOpen}>
-		<Dialog.Content showCloseButton={false} class="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
+		<Dialog.Content showCloseButton={false} class="max-h-[80vh] overflow-hidden sm:max-w-2xl">
 			<div class="flex items-start justify-between gap-4">
 				<Dialog.Header class="text-left">
 					<Dialog.Title>Choose a topic</Dialog.Title>
@@ -917,7 +982,10 @@
 				>
 			</div>
 
-			<div class="mt-2 flex flex-col gap-2">
+			<div
+				bind:this={disambiguationOptionsContainer}
+				class="mt-2 flex max-h-[52vh] flex-col gap-2 overflow-y-auto pe-1"
+			>
 				{#each disambiguationOptions as option (option.title)}
 					<Button
 						variant="outline"
