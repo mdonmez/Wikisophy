@@ -5,6 +5,15 @@
 	import DicesIcon from '@lucide/svelte/icons/dices';
 	import XIcon from '@lucide/svelte/icons/x';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import AtomIcon from '@lucide/svelte/icons/atom';
+	import LineSquiggleIcon from '@lucide/svelte/icons/line-squiggle';
+	import EarthIcon from '@lucide/svelte/icons/earth';
+	import OmegaIcon from '@lucide/svelte/icons/omega';
+	import BookOpenTextIcon from '@lucide/svelte/icons/book-open-text';
+	import CpuIcon from '@lucide/svelte/icons/cpu';
+	import MusicIcon from '@lucide/svelte/icons/music';
+	import SigmaIcon from '@lucide/svelte/icons/sigma';
+	import PersonStandingIcon from '@lucide/svelte/icons/person-standing';
 	import { Button, buttonVariants } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Command from '$lib/components/ui/command/index.js';
@@ -29,6 +38,7 @@
 		searchArticles,
 		fetchPreview,
 		fetchRandomArticle,
+		fetchCategoryStarter,
 		findNextStep,
 		fetchDisambiguationOptions
 	} from '$lib/wikipedia-client';
@@ -92,6 +102,63 @@
 	let randomQuote = $state<(typeof PHILOSOPHY_QUOTES)[number] | null>(null);
 
 	let isJourneyActive = $derived(journeyState.status === 'RUNNING' || isLoadingInitial);
+
+	const starterCategories = [
+		{
+			label: 'Science',
+			queries: ['Physics', 'Biology', 'Astronomy', 'Genetics', 'Quantum mechanics'],
+			icon: AtomIcon,
+			colorClass: 'text-cyan-500'
+		},
+		{
+			label: 'Art',
+			queries: ['Mona Lisa', 'Vincent van Gogh', 'Renaissance', 'Impressionism', 'Sculpture'],
+			icon: LineSquiggleIcon,
+			colorClass: 'text-rose-500'
+		},
+		{
+			label: 'History',
+			queries: ['French Revolution', 'Ancient Rome', 'World War II', 'Silk Road', 'History'],
+			icon: EarthIcon,
+			colorClass: 'text-emerald-500'
+		},
+		{
+			label: 'Philosophy',
+			queries: ['Plato', 'Aristotle', 'Epistemology', 'Existentialism', 'Ethics'],
+			icon: OmegaIcon,
+			colorClass: 'text-amber-500'
+		},
+		{
+			label: 'Literature',
+			queries: ['William Shakespeare', 'Novel', 'Poetry', 'Don Quixote', 'Literature'],
+			icon: BookOpenTextIcon,
+			colorClass: 'text-sky-500'
+		},
+		{
+			label: 'Technology',
+			queries: ['CPU', 'Linux', 'Operating system', 'Computer', 'Artificial intelligence'],
+			icon: CpuIcon,
+			colorClass: 'text-lime-500'
+		},
+		{
+			label: 'Music',
+			queries: ['Ludwig van Beethoven', 'Jazz', 'Rock music', 'Classical music', 'Music'],
+			icon: MusicIcon,
+			colorClass: 'text-fuchsia-500'
+		},
+		{
+			label: 'Mathematics',
+			queries: ['Calculus', 'Number theory', 'Topology', 'Algebra', 'Mathematics'],
+			icon: SigmaIcon,
+			colorClass: 'text-indigo-500'
+		},
+		{
+			label: 'Culture',
+			queries: ['Cultural anthropology', 'Cuisine', 'Folklore', 'Tradition', 'Culture'],
+			icon: PersonStandingIcon,
+			colorClass: 'text-teal-500'
+		}
+	] as const;
 
 	const LOCAL_CACHE_LIMIT = 100;
 	const AVATAR_CACHE_KEY = 'wikisophy.avatarCache.v1';
@@ -227,6 +294,28 @@
 				outcome: 'error'
 			};
 		} finally {
+			isLoadingInitial = false;
+		}
+	}
+
+	async function handleCategoryStarter(queries: readonly string[]): Promise<void> {
+		if (isJourneyActive) return;
+		isLoadingInitial = true;
+
+		try {
+			const title = await fetchCategoryStarter(queries);
+			if (title) {
+				startJourney(title);
+				return;
+			}
+			throw new Error('Failed to fetch category starter');
+		} catch (err) {
+			console.error('Category starter failed:', err);
+			journeyState = {
+				status: 'FINISHED',
+				path: [],
+				outcome: 'error'
+			};
 			isLoadingInitial = false;
 		}
 	}
@@ -669,6 +758,28 @@
 						</Command.List>
 					{/if}
 				</Command.Root>
+			</div>
+
+			<!-- Try These Starters -->
+			<div class="mx-auto mt-6 max-w-3xl">
+				<div class="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+					Try these starters
+				</div>
+				<div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+					{#each starterCategories as category (category.label)}
+						<Button
+							variant="outline"
+							class="h-auto justify-start gap-3 px-3 py-3"
+							onclick={() => handleCategoryStarter(category.queries)}
+							disabled={isJourneyActive}
+						>
+							<span class="grid size-9 place-items-center">
+								<svelte:component this={category.icon} class={`h-5 w-5 ${category.colorClass}`} />
+							</span>
+							<span class="text-sm font-medium">{category.label}</span>
+						</Button>
+					{/each}
+				</div>
 			</div>
 
 			<!-- Path Section -->

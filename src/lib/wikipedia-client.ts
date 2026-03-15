@@ -17,7 +17,8 @@ import type {
 	DisambiguationOption,
 	WikipediaSummary,
 	WikipediaOpenSearchResult,
-	WikipediaRandomResult
+	WikipediaRandomResult,
+	WikipediaSearchQueryResult
 } from './types';
 import { loadCacheMap, persistCacheMap, touchMapEntry } from './localStorageCache';
 import { fetchArticleHtml, findFirstWikiLink, extractDisambiguationOptions } from './wikipedia';
@@ -25,6 +26,8 @@ import { fetchArticleHtml, findFirstWikiLink, extractDisambiguationOptions } fro
 const LOCAL_CACHE_LIMIT = 100;
 const PREVIEW_CACHE_KEY = 'wikisophy.previewCache.v1';
 const NEXT_LINK_CACHE_KEY = 'wikisophy.nextLinkCache.v1';
+const CATEGORY_SEARCH_LIMIT = 12;
+const CATEGORY_SEARCH_MAX_ATTEMPTS = 3;
 
 const previewCache = loadCacheMap<PreviewResponse>(PREVIEW_CACHE_KEY);
 const nextLinkCache = loadCacheMap<string | null>(NEXT_LINK_CACHE_KEY);
@@ -159,6 +162,50 @@ export async function fetchRandomArticle(): Promise<string | null> {
 				return !hasDisambiguationCategory;
 			});
 			if (page) return page.title;
+		} catch {
+			return null;
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Fetch a random starter article based on category queries.
+ */
+export async function fetchCategoryStarter(
+	queries: readonly string[],
+	signal?: AbortSignal
+): Promise<string | null> {
+	const cleanedQueries = queries.map((query) => query.trim()).filter(Boolean);
+	if (cleanedQueries.length === 0) return null;
+
+	for (let attempt = 0; attempt < CATEGORY_SEARCH_MAX_ATTEMPTS; attempt++) {
+		const query = cleanedQueries[Math.floor(Math.random() * cleanedQueries.length)];
+		const params = new URLSearchParams({
+			action: 'query',
+			list: 'search',
+			srsearch: query,
+			srlimit: CATEGORY_SEARCH_LIMIT.toString(),
+			srnamespace: '0',
+			format: 'json',
+			origin: '*'
+		});
+
+		try {
+			const res = await fetch(`${WIKIPEDIA_API_URL}?${params}`, { signal });
+			if (!res.ok) {
+				continue;
+			}
+
+			const data: WikipediaSearchQueryResult = await res.json();
+			const titles = (data.query?.search ?? [])
+				.map((item) => item.title)
+				.filter((title) => !title.toLowerCase().includes('(disambiguation)'));
+
+			if (titles.length > 0) {
+				return titles[Math.floor(Math.random() * titles.length)];
+			}
 		} catch {
 			return null;
 		}

@@ -129,6 +129,17 @@ export type WikipediaRandomResult = {
 };
 
 /**
+ * Wikipedia API search query response structure
+ */
+export type WikipediaSearchQueryResult = {
+	query?: {
+		search?: {
+			title: string;
+		}[];
+	};
+};
+
+/**
  * Philosophical quote structure
  */
 export type Quote = {
