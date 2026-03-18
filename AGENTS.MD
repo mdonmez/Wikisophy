@@ -1,33 +1,39 @@
 # AGENTS.md - Wikisophy Project Guide
 
-## Overview
-
-Wikisophy is a SvelteKit 2 + Svelte 5 app demonstrating the Wikipedia "Getting to Philosophy" phenomenon. Users start from any article and follow the first valid link until reaching "Philosophy".
+> For project overview, usage, and contributing guidelines, see [README.md](README.md).
 
 ## Build Commands
 
 ```bash
 # Development
-bun run dev              # Start dev server
-bun run build            # Production build (static adapter)
+bun run dev              # Start Vite dev server
+bun run build            # Production build (Cloudflare Workers)
 bun run preview          # Preview production build
+bun run prepare          # svelte-kit sync
 
 # Quality Checks
-bun run check            # TypeScript/Svelte type checking
+bun run check            # TypeScript/Svelte type checking (svelte-check)
 bun run check:watch      # Type checking in watch mode
-bun run lint             # ESLint + Prettier check
+bun run lint             # Prettier check + ESLint
 bun run format           # Format all files with Prettier
 ```
 
-**Note:** No test framework is configured.
+**No test framework is configured** — no vitest, jest, or playwright.
 
 ## Technology Stack
 
-- **SvelteKit 2.53+** with static adapter (GitHub Pages)
-- **Svelte 5.53+** using Runes syntax exclusively
-- **TypeScript 5.9+** with strict mode
-- **Tailwind CSS 4.2+** with shadcn-svelte components
-- **Bun** for package management
+| Technology      | Version               | Notes                                               |
+| --------------- | --------------------- | --------------------------------------------------- |
+| SvelteKit       | ^2.53.4               | Cloudflare adapter (`@sveltejs/adapter-cloudflare`) |
+| Svelte          | ^5.53.8               | Runes syntax exclusively                            |
+| TypeScript      | ^5.9.3                | Strict mode                                         |
+| Vite            | ^7.3.1                |                                                     |
+| Tailwind CSS    | ^4.2.1                | v4 with `@tailwindcss/vite` plugin                  |
+| shadcn-svelte   | via `components.json` | Neutral base color, `bits-ui ^2.16.3`               |
+| ESLint          | ^9.39.4               | Flat config                                         |
+| Prettier        | ^3.8.1                | With svelte + tailwindcss plugins                   |
+| Package manager | Bun                   |                                                     |
+| Deployment      | Cloudflare Workers    | `wrangler.jsonc`, `nodejs_compat` flag              |
 
 ## Code Style Guidelines
 
@@ -119,17 +125,21 @@ Document all exported functions with JSDoc comments.
 ```
 src/
 ├── lib/
-│   ├── components/ui/      # shadcn-svelte UI components
-│   ├── constants.ts         # App constants (MAX_STEPS, etc.)
-│   ├── types.ts             # TypeScript type definitions
-│   ├── utils.ts             # cn() helper and type utilities
-│   ├── wikipedia.ts         # Wikipedia HTML parsing logic
-│   ├── wikipedia-client.ts  # Client-side Wikipedia API calls
-│   └── quotes.ts            # Philosophy quotes collection
-└── routes/
-    ├── +layout.svelte       # Root layout with ModeWatcher
-    ├── +page.svelte         # Main application page
-    └── layout.css           # Global styles and CSS variables
+│   ├── components/ui/       # shadcn-svelte UI components (badge, button, command, dialog, item, popover, separator, skeleton)
+│   ├── constants.ts         # App constants (MAX_STEPS, SEARCH_DEBOUNCE, API URLs)
+│   ├── types.ts             # TypeScript type definitions (Article, JourneyState, etc.)
+│   ├── utils.ts             # cn() helper (clsx + twMerge)
+│   ├── wikipedia.ts         # Wikipedia HTML parsing logic (DOMParser, browser-only)
+│   ├── wikipedia-client.ts  # Client-side Wikipedia API calls (CORS-enabled)
+│   ├── localStorageCache.ts # Map-based localStorage cache with LRU eviction
+│   ├── quotes.ts            # Philosophy quotes collection
+│   └── index.ts             # $lib alias placeholder
+├── routes/
+│   ├── +layout.svelte       # Root layout (imports layout.css, ModeWatcher)
+│   ├── +page.svelte         # Single-page app (all UI + logic in one file)
+│   └── layout.css           # Tailwind v4 CSS with oklch color variables
+├── app.d.ts                 # SvelteKit app type declarations
+└── app.html                 # HTML shell
 ```
 
 ## Core Patterns
@@ -137,6 +147,7 @@ src/
 ### Wikipedia Link Parsing Rules
 
 Valid links must:
+
 - Start with `/wiki/`
 - NOT contain `:` (excludes File:, Help:, Category:)
 - NOT be inside parentheses `()`
@@ -164,9 +175,12 @@ $effect(() => {
 
 ## Important Notes
 
-1. **Svelte 5 Runes only** - No legacy syntax
-2. **Use Bun** - Not npm/yarn/pnpm
-3. **Client-side API calls** - Direct Wikipedia API from browser
-4. **Static export** - GitHub Pages deployment with `base: '/wikisophy'`
-5. **Strict TypeScript** - No `any` types
-6. **shadcn-svelte** - Use existing UI components
+1. **Svelte 5 Runes only** — No `$:`, `export let`, or `<slot>`
+2. **Use Bun** — Not npm/yarn/pnpm
+3. **Client-side API calls** — Wikipedia API called directly from browser (CORS-enabled)
+4. **Cloudflare Workers deployment** — Uses `@sveltejs/adapter-cloudflare` with `nodejs_compat`
+5. **Strict TypeScript** — No `any` types; use `unknown` or specific types
+6. **Tailwind v4** — Uses `@tailwindcss/vite` plugin, not `tailwind.config.js`; CSS in `layout.css` with `@import 'tailwindcss'`
+7. **DOMParser is browser-only** — `wikipedia.ts` uses `DOMParser`; won't work in SSR
+8. **Single-page app** — All logic in `+page.svelte`; no additional routes
+9. **shadcn-svelte** — Use existing UI components from `$lib/components/ui/`; `cn()` from `$lib/utils`
