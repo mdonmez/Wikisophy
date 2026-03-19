@@ -18,7 +18,8 @@ import type {
 	WikipediaSummary,
 	WikipediaOpenSearchResult,
 	WikipediaRandomResult,
-	WikipediaSearchQueryResult
+	WikipediaCategoryMembersGeneratorResult,
+	WikipediaCategoryMembersGeneratorPage
 } from './types';
 import { loadCacheMap, persistCacheMap, touchMapEntry } from './localStorageCache';
 import { fetchArticleHtml, findFirstWikiLink, extractDisambiguationOptions } from './wikipedia';
@@ -26,8 +27,10 @@ import { fetchArticleHtml, findFirstWikiLink, extractDisambiguationOptions } fro
 const LOCAL_CACHE_LIMIT = 100;
 const PREVIEW_CACHE_KEY = 'wikisophy.previewCache.v1';
 const NEXT_LINK_CACHE_KEY = 'wikisophy.nextLinkCache.v1';
-const CATEGORY_SEARCH_LIMIT = 12;
-const CATEGORY_SEARCH_MAX_ATTEMPTS = 3;
+const CATEGORY_MEMBER_BATCH_LIMIT = 50;
+const CATEGORY_MEMBER_MAX_BATCHES = 4;
+const CATEGORY_STARTER_MAX_ATTEMPTS = 4;
+const CATEGORY_CANDIDATE_TARGET = 120;
 
 const previewCache = loadCacheMap<PreviewResponse>(PREVIEW_CACHE_KEY);
 const nextLinkCache = loadCacheMap<string | null>(NEXT_LINK_CACHE_KEY);
@@ -156,8 +159,8 @@ export async function fetchRandomArticle(): Promise<string | null> {
 			const pages = Object.values(data.query?.pages ?? {});
 			const page = pages.find((entry) => {
 				if (entry.pageprops?.disambiguation) return false;
-				const hasDisambiguationCategory = (entry.categories ?? []).some((category) =>
-					category.title.toLowerCase() === 'category:disambiguation pages'
+				const hasDisambiguationCategory = (entry.categories ?? []).some(
+					(category) => category.title.toLowerCase() === 'category:disambiguation pages'
 				);
 				return !hasDisambiguationCategory;
 			});
@@ -171,47 +174,185 @@ export async function fetchRandomArticle(): Promise<string | null> {
 }
 
 /**
- * Fetch a random starter article based on category queries.
+ * Fetch a random starter article based on real Wikipedia categories.
  */
 export async function fetchCategoryStarter(
-	queries: readonly string[],
+	categories: readonly string[],
 	signal?: AbortSignal
 ): Promise<string | null> {
-	const cleanedQueries = queries.map((query) => query.trim()).filter(Boolean);
-	if (cleanedQueries.length === 0) return null;
+	const normalizedCategories = categories
+		.map((category) => normalizeCategoryTitle(category))
+		.filter(Boolean);
+	if (normalizedCategories.length === 0) return null;
 
-	for (let attempt = 0; attempt < CATEGORY_SEARCH_MAX_ATTEMPTS; attempt++) {
-		const query = cleanedQueries[Math.floor(Math.random() * cleanedQueries.length)];
+	const blockedStarterTitles = new Set(
+		normalizedCategories
+			.map((category) => extractCategoryTopicTitle(category))
+			.filter(Boolean)
+			.map((title) => normalizeTitleForCompare(title))
+	);
+
+	const candidateSet = new Set<string>();
+
+	for (let attempt = 0; attempt < CATEGORY_STARTER_MAX_ATTEMPTS; attempt++) {
+		if (signal?.aborted) return null;
+
+		const category = normalizedCategories[Math.floor(Math.random() * normalizedCategories.length)];
+		const candidates = await fetchCategoryMemberCandidates(category, blockedStarterTitles, signal);
+		for (const candidate of candidates) {
+			candidateSet.add(candidate);
+		}
+
+		if (candidateSet.size >= CATEGORY_CANDIDATE_TARGET) {
+			break;
+		}
+	}
+
+	const candidateList = Array.from(candidateSet);
+	if (candidateList.length === 0) return null;
+
+	return pickVerifiedStarterCandidate(candidateList, blockedStarterTitles, signal);
+}
+
+async function fetchCategoryMemberCandidates(
+	categoryTitle: string,
+	blockedStarterTitles: ReadonlySet<string>,
+	signal?: AbortSignal
+): Promise<string[]> {
+	const candidates: string[] = [];
+	let gcmcontinue: string | undefined;
+
+	for (let batch = 0; batch < CATEGORY_MEMBER_MAX_BATCHES; batch++) {
 		const params = new URLSearchParams({
 			action: 'query',
-			list: 'search',
-			srsearch: query,
-			srlimit: CATEGORY_SEARCH_LIMIT.toString(),
-			srnamespace: '0',
+			generator: 'categorymembers',
+			gcmtitle: categoryTitle,
+			gcmtype: 'page',
+			gcmnamespace: '0',
+			gcmlimit: CATEGORY_MEMBER_BATCH_LIMIT.toString(),
+			prop: 'pageprops|categories',
+			ppprop: 'disambiguation',
+			clshow: '!hidden',
+			cllimit: '20',
+			redirects: '1',
 			format: 'json',
 			origin: '*'
 		});
 
+		if (gcmcontinue) {
+			params.set('gcmcontinue', gcmcontinue);
+		}
+
 		try {
 			const res = await fetch(`${WIKIPEDIA_API_URL}?${params}`, { signal });
 			if (!res.ok) {
-				continue;
+				break;
 			}
 
-			const data: WikipediaSearchQueryResult = await res.json();
-			const titles = (data.query?.search ?? [])
-				.map((item) => item.title)
-				.filter((title) => !title.toLowerCase().includes('(disambiguation)'));
+			const data: WikipediaCategoryMembersGeneratorResult = await res.json();
+			const pages = Object.values(data.query?.pages ?? {});
 
-			if (titles.length > 0) {
-				return titles[Math.floor(Math.random() * titles.length)];
+			for (const page of pages) {
+				if (isValidCategoryStarterPage(page, blockedStarterTitles)) {
+					candidates.push(page.title);
+				}
+			}
+
+			gcmcontinue = data.continue?.gcmcontinue;
+			if (!gcmcontinue) {
+				break;
 			}
 		} catch {
-			return null;
+			return candidates;
 		}
 	}
 
+	return candidates;
+}
+
+async function pickVerifiedStarterCandidate(
+	candidates: readonly string[],
+	blockedStarterTitles: ReadonlySet<string>,
+	signal?: AbortSignal
+): Promise<string | null> {
+	const pool = [...candidates];
+
+	while (pool.length > 0) {
+		if (signal?.aborted) return null;
+
+		const index = Math.floor(Math.random() * pool.length);
+		const [candidate] = pool.splice(index, 1);
+		if (!candidate) continue;
+
+		if (isBlockedStarterTitle(candidate, blockedStarterTitles)) {
+			continue;
+		}
+
+		const preview = await fetchPreview(candidate, signal);
+		if (!preview) {
+			continue;
+		}
+
+		if (preview.isDisambiguation) {
+			continue;
+		}
+
+		if (isBlockedStarterTitle(preview.title, blockedStarterTitles)) {
+			continue;
+		}
+
+		return preview.title;
+	}
+
 	return null;
+}
+
+function normalizeCategoryTitle(category: string): string {
+	const normalized = category.trim().replace(/_/g, ' ');
+	if (!normalized) return '';
+
+	if (normalized.toLowerCase().startsWith('category:')) {
+		const suffix = normalized.slice('category:'.length).trim();
+		if (!suffix) return '';
+		return `Category:${suffix}`;
+	}
+
+	return `Category:${normalized}`;
+}
+
+function extractCategoryTopicTitle(categoryTitle: string): string {
+	if (!categoryTitle.toLowerCase().startsWith('category:')) {
+		return categoryTitle.trim();
+	}
+
+	return categoryTitle.slice('category:'.length).trim();
+}
+
+function normalizeTitleForCompare(title: string): string {
+	return title.trim().replace(/_/g, ' ').replace(/\s+/g, ' ').toLowerCase();
+}
+
+function isBlockedStarterTitle(title: string, blockedStarterTitles: ReadonlySet<string>): boolean {
+	return blockedStarterTitles.has(normalizeTitleForCompare(title));
+}
+
+function isValidCategoryStarterPage(
+	page: WikipediaCategoryMembersGeneratorPage,
+	blockedStarterTitles: ReadonlySet<string>
+): boolean {
+	const normalizedTitle = page.title.trim();
+	if (!normalizedTitle) return false;
+	if (page.pageprops?.disambiguation) return false;
+	if (isBlockedStarterTitle(normalizedTitle, blockedStarterTitles)) return false;
+
+	const lowerTitle = normalizedTitle.toLowerCase();
+	if (lowerTitle.includes('(disambiguation)')) return false;
+
+	const hasDisambiguationCategory = (page.categories ?? []).some(
+		(category) => category.title.toLowerCase() === 'category:disambiguation pages'
+	);
+
+	return !hasDisambiguationCategory;
 }
 
 /**

@@ -9,11 +9,14 @@
 	import LineSquiggleIcon from '@lucide/svelte/icons/line-squiggle';
 	import EarthIcon from '@lucide/svelte/icons/earth';
 	import OmegaIcon from '@lucide/svelte/icons/omega';
-	import BookOpenTextIcon from '@lucide/svelte/icons/book-open-text';
 	import CpuIcon from '@lucide/svelte/icons/cpu';
 	import MusicIcon from '@lucide/svelte/icons/music';
 	import SigmaIcon from '@lucide/svelte/icons/sigma';
-	import PersonStandingIcon from '@lucide/svelte/icons/person-standing';
+	import GlobeIcon from '@lucide/svelte/icons/globe';
+	import TrophyIcon from '@lucide/svelte/icons/trophy';
+	import HeartPulseIcon from '@lucide/svelte/icons/heart-pulse';
+	import BookOpenTextIcon from '@lucide/svelte/icons/book-open-text';
+	import LandmarkIcon from '@lucide/svelte/icons/landmark';
 	import { Button, buttonVariants } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Command from '$lib/components/ui/command/index.js';
@@ -117,57 +120,75 @@
 	const starterCategories = [
 		{
 			label: 'Science',
-			queries: ['Physics', 'Biology', 'Astronomy', 'Genetics', 'Quantum mechanics'],
+			categoryTitles: ['Category:Science'],
 			icon: AtomIcon,
 			colorClass: 'text-cyan-500'
 		},
 		{
 			label: 'Art',
-			queries: ['Mona Lisa', 'Vincent van Gogh', 'Renaissance', 'Impressionism', 'Sculpture'],
+			categoryTitles: ['Category:The arts'],
 			icon: LineSquiggleIcon,
 			colorClass: 'text-rose-500'
 		},
 		{
 			label: 'History',
-			queries: ['French Revolution', 'Ancient Rome', 'World War II', 'Silk Road', 'History'],
+			categoryTitles: ['Category:History'],
 			icon: EarthIcon,
 			colorClass: 'text-emerald-500'
 		},
 		{
 			label: 'Philosophy',
-			queries: ['Plato', 'Aristotle', 'Epistemology', 'Existentialism', 'Ethics'],
+			categoryTitles: ['Category:Philosophy'],
 			icon: OmegaIcon,
 			colorClass: 'text-amber-500'
 		},
 		{
 			label: 'Literature',
-			queries: ['William Shakespeare', 'Novel', 'Poetry', 'Don Quixote', 'Literature'],
+			categoryTitles: ['Category:Literature'],
 			icon: BookOpenTextIcon,
 			colorClass: 'text-sky-500'
 		},
 		{
 			label: 'Technology',
-			queries: ['CPU', 'Linux', 'Operating system', 'Computer', 'Artificial intelligence'],
+			categoryTitles: ['Category:Technology'],
 			icon: CpuIcon,
 			colorClass: 'text-lime-500'
 		},
 		{
 			label: 'Music',
-			queries: ['Ludwig van Beethoven', 'Jazz', 'Rock music', 'Classical music', 'Music'],
+			categoryTitles: ['Category:Music'],
 			icon: MusicIcon,
 			colorClass: 'text-fuchsia-500'
 		},
 		{
 			label: 'Mathematics',
-			queries: ['Calculus', 'Number theory', 'Topology', 'Algebra', 'Mathematics'],
+			categoryTitles: ['Category:Mathematics'],
 			icon: SigmaIcon,
 			colorClass: 'text-indigo-500'
 		},
 		{
-			label: 'Culture',
-			queries: ['Cultural anthropology', 'Cuisine', 'Folklore', 'Tradition', 'Culture'],
-			icon: PersonStandingIcon,
+			label: 'Geography',
+			categoryTitles: ['Category:Geography'],
+			icon: GlobeIcon,
 			colorClass: 'text-teal-500'
+		},
+		{
+			label: 'Sports',
+			categoryTitles: ['Category:Sports'],
+			icon: TrophyIcon,
+			colorClass: 'text-orange-500'
+		},
+		{
+			label: 'Medicine',
+			categoryTitles: ['Category:Medicine'],
+			icon: HeartPulseIcon,
+			colorClass: 'text-red-500'
+		},
+		{
+			label: 'Politics',
+			categoryTitles: ['Category:Politics'],
+			icon: LandmarkIcon,
+			colorClass: 'text-violet-500'
 		}
 	] as const;
 
@@ -360,12 +381,12 @@
 		}
 	}
 
-	async function handleCategoryStarter(queries: readonly string[]): Promise<void> {
+	async function handleCategoryStarter(categoryTitles: readonly string[]): Promise<void> {
 		if (isJourneyActive) return;
 		isLoadingInitial = true;
 
 		try {
-			const title = await fetchCategoryStarter(queries);
+			const title = await fetchCategoryStarter(categoryTitles);
 			if (title) {
 				startJourney(title);
 				return;
@@ -834,7 +855,7 @@
 							<Button
 								variant="outline"
 								class="h-auto justify-start gap-3 px-3 py-3"
-								onclick={() => handleCategoryStarter(category.queries)}
+								onclick={() => handleCategoryStarter(category.categoryTitles)}
 								disabled={isJourneyActive}
 							>
 								<span class="grid size-9 place-items-center">

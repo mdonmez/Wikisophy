@@ -129,6 +129,32 @@ export type WikipediaRandomResult = {
 };
 
 /**
+ * Wikipedia API generator=categorymembers page shape
+ */
+export type WikipediaCategoryMembersGeneratorPage = {
+	title: string;
+	pageprops?: {
+		disambiguation?: string;
+	};
+	categories?: {
+		title: string;
+	}[];
+};
+
+/**
+ * Wikipedia API generator=categorymembers response structure
+ */
+export type WikipediaCategoryMembersGeneratorResult = {
+	continue?: {
+		gcmcontinue?: string;
+		continue?: string;
+	};
+	query?: {
+		pages?: Record<string, WikipediaCategoryMembersGeneratorPage>;
+	};
+};
+
+/**
  * Wikipedia API search query response structure
  */
 export type WikipediaSearchQueryResult = {
